@@ -3,62 +3,70 @@ PREHOOK: query: -- test for describe extended table
 -- test for alter table drop partition
 CREATE TABLE INPUTDDL6(KEY STRING, VALUE STRING) PARTITIONED BY(ds STRING) STORED AS TEXTFILE
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: -- test for describe extended table
 -- test for describe extended table partition
 -- test for alter table drop partition
 CREATE TABLE INPUTDDL6(KEY STRING, VALUE STRING) PARTITIONED BY(ds STRING) STORED AS TEXTFILE
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@INPUTDDL6
-PREHOOK: query: LOAD DATA LOCAL INPATH '../data/files/kv1.txt' INTO TABLE INPUTDDL6 PARTITION (ds='2008-04-09')
+PREHOOK: query: LOAD DATA LOCAL INPATH '../../data/files/kv1.txt' INTO TABLE INPUTDDL6 PARTITION (ds='2008-04-09')
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@inputddl6
-POSTHOOK: query: LOAD DATA LOCAL INPATH '../data/files/kv1.txt' INTO TABLE INPUTDDL6 PARTITION (ds='2008-04-09')
+POSTHOOK: query: LOAD DATA LOCAL INPATH '../../data/files/kv1.txt' INTO TABLE INPUTDDL6 PARTITION (ds='2008-04-09')
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@inputddl6
 POSTHOOK: Output: default@inputddl6@ds=2008-04-09
-PREHOOK: query: LOAD DATA LOCAL INPATH '../data/files/kv1.txt' INTO TABLE INPUTDDL6 PARTITION (ds='2008-04-08')
+PREHOOK: query: LOAD DATA LOCAL INPATH '../../data/files/kv1.txt' INTO TABLE INPUTDDL6 PARTITION (ds='2008-04-08')
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@inputddl6
-POSTHOOK: query: LOAD DATA LOCAL INPATH '../data/files/kv1.txt' INTO TABLE INPUTDDL6 PARTITION (ds='2008-04-08')
+POSTHOOK: query: LOAD DATA LOCAL INPATH '../../data/files/kv1.txt' INTO TABLE INPUTDDL6 PARTITION (ds='2008-04-08')
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@inputddl6
 POSTHOOK: Output: default@inputddl6@ds=2008-04-08
 PREHOOK: query: DESCRIBE EXTENDED INPUTDDL6
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@inputddl6
 POSTHOOK: query: DESCRIBE EXTENDED INPUTDDL6
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-key                 	string              	None                
-value               	string              	None                
-ds                  	string              	None                
+POSTHOOK: Input: default@inputddl6
+key                 	string              	                    
+value               	string              	                    
+ds                  	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-ds                  	string              	None                
+ds                  	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: DESCRIBE EXTENDED INPUTDDL6 PARTITION (ds='2008-04-08')
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@inputddl6
 POSTHOOK: query: DESCRIBE EXTENDED INPUTDDL6 PARTITION (ds='2008-04-08')
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-key                 	string              	None                
-value               	string              	None                
-ds                  	string              	None                
+POSTHOOK: Input: default@inputddl6
+key                 	string              	                    
+value               	string              	                    
+ds                  	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-ds                  	string              	None                
+ds                  	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: SHOW PARTITIONS INPUTDDL6
 PREHOOK: type: SHOWPARTITIONS
+PREHOOK: Input: default@inputddl6
 POSTHOOK: query: SHOW PARTITIONS INPUTDDL6
 POSTHOOK: type: SHOWPARTITIONS
+POSTHOOK: Input: default@inputddl6
 ds=2008-04-08
 ds=2008-04-09
 PREHOOK: query: ALTER TABLE INPUTDDL6 DROP PARTITION (ds='2008-04-08')
@@ -71,8 +79,10 @@ POSTHOOK: Input: default@inputddl6
 POSTHOOK: Output: default@inputddl6@ds=2008-04-08
 PREHOOK: query: SHOW PARTITIONS INPUTDDL6
 PREHOOK: type: SHOWPARTITIONS
+PREHOOK: Input: default@inputddl6
 POSTHOOK: query: SHOW PARTITIONS INPUTDDL6
 POSTHOOK: type: SHOWPARTITIONS
+POSTHOOK: Input: default@inputddl6
 ds=2008-04-09
 PREHOOK: query: EXPLAIN
 DESCRIBE EXTENDED INPUTDDL6 PARTITION (ds='2008-04-09')
@@ -80,12 +90,9 @@ PREHOOK: type: DESCTABLE
 POSTHOOK: query: EXPLAIN
 DESCRIBE EXTENDED INPUTDDL6 PARTITION (ds='2008-04-09')
 POSTHOOK: type: DESCTABLE
-ABSTRACT SYNTAX TREE:
-  (TOK_DESCTABLE (TOK_TABTYPE INPUTDDL6 (TOK_PARTSPEC (TOK_PARTVAL ds '2008-04-09'))) EXTENDED)
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
-  Stage-1 is a root stage
+  Stage-1 depends on stages: Stage-0
 
 STAGE PLANS:
   Stage: Stage-0
@@ -98,7 +105,8 @@ STAGE PLANS:
   Stage: Stage-1
     Fetch Operator
       limit: -1
-
+      Processor Tree:
+        ListSink
 
 PREHOOK: query: DROP TABLE INPUTDDL6
 PREHOOK: type: DROPTABLE

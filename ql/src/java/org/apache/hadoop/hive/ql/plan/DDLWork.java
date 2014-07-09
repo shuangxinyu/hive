@@ -36,6 +36,8 @@ public class DDLWork implements Serializable {
   private CreateDatabaseDesc createDatabaseDesc;
   private SwitchDatabaseDesc switchDatabaseDesc;
   private DropDatabaseDesc dropDatabaseDesc;
+  private LockDatabaseDesc lockDatabaseDesc;
+  private UnlockDatabaseDesc unlockDatabaseDesc;
   private CreateTableDesc createTblDesc;
   private CreateTableLikeDesc createTblLikeDesc;
   private CreateViewDesc createVwDesc;
@@ -50,6 +52,8 @@ public class DDLWork implements Serializable {
   private UnlockTableDesc unlockTblDesc;
   private ShowFunctionsDesc showFuncsDesc;
   private ShowLocksDesc showLocksDesc;
+  private ShowCompactionsDesc showCompactionsDesc;
+  private ShowTxnsDesc showTxnsDesc;
   private DescFunctionDesc descFunctionDesc;
   private ShowPartitionsDesc showPartsDesc;
   private ShowCreateTableDesc showCreateTblDesc;
@@ -64,6 +68,7 @@ public class DDLWork implements Serializable {
   private AlterDatabaseDesc alterDbDesc;
   private AlterTableAlterPartDesc alterTableAlterPartDesc;
   private TruncateTableDesc truncateTblDesc;
+  private AlterTableExchangePartition alterTableExchangePartition;
 
   private RoleDDLDesc roleDDLDesc;
   private GrantDesc grantDesc;
@@ -283,6 +288,24 @@ public class DDLWork implements Serializable {
   }
 
   /**
+   * @param lockDatabaseDesc
+   */
+  public DDLWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs,
+      LockDatabaseDesc lockDatabaseDesc) {
+    this(inputs, outputs);
+    this.lockDatabaseDesc = lockDatabaseDesc;
+  }
+
+  /**
+   * @param unlockDatabaseDesc
+   */
+  public DDLWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs,
+      UnlockDatabaseDesc unlockDatabaseDesc) {
+    this(inputs, outputs);
+    this.unlockDatabaseDesc = unlockDatabaseDesc;
+  }
+
+  /**
    * @param showFuncsDesc
    */
   public DDLWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs,
@@ -302,7 +325,19 @@ public class DDLWork implements Serializable {
     this.showLocksDesc = showLocksDesc;
   }
 
-  /**
+  public DDLWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs,
+                 ShowCompactionsDesc showCompactionsDesc) {
+    this(inputs, outputs);
+    this.showCompactionsDesc = showCompactionsDesc;
+  }
+
+  public DDLWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs,
+                 ShowTxnsDesc showTxnsDesc) {
+    this(inputs, outputs);
+    this.showTxnsDesc = showTxnsDesc;
+  }
+
+   /**
    * @param descFuncDesc
    */
   public DDLWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs,
@@ -449,6 +484,12 @@ public class DDLWork implements Serializable {
     this.alterTableAlterPartDesc = alterPartDesc;
   }
 
+  public DDLWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs,
+      AlterTableExchangePartition alterTableExchangePartition) {
+    this(inputs, outputs);
+    this.alterTableExchangePartition = alterTableExchangePartition;
+  }
+
     /**
    * @return Create Database descriptor
    */
@@ -492,6 +533,22 @@ public class DDLWork implements Serializable {
    */
   public void setSwitchDatabaseDesc(SwitchDatabaseDesc switchDatabaseDesc) {
     this.switchDatabaseDesc = switchDatabaseDesc;
+  }
+
+  public LockDatabaseDesc getLockDatabaseDesc() {
+    return lockDatabaseDesc;
+  }
+
+  public void setLockDatabaseDesc(LockDatabaseDesc lockDatabaseDesc) {
+    this.lockDatabaseDesc = lockDatabaseDesc;
+  }
+
+  public UnlockDatabaseDesc getUnlockDatabaseDesc() {
+    return unlockDatabaseDesc;
+  }
+
+  public void setUnlockDatabaseDesc(UnlockDatabaseDesc unlockDatabaseDesc) {
+    this.unlockDatabaseDesc = unlockDatabaseDesc;
   }
 
   /**
@@ -668,6 +725,16 @@ public class DDLWork implements Serializable {
     return showLocksDesc;
   }
 
+  @Explain(displayName = "Show Compactions Operator")
+  public ShowCompactionsDesc getShowCompactionsDesc() {
+    return showCompactionsDesc;
+  }
+
+  @Explain(displayName = "Show Transactions Operator")
+  public ShowTxnsDesc getShowTxnsDesc() {
+    return showTxnsDesc;
+  }
+
   /**
    * @return the lockTblDesc
    */
@@ -706,6 +773,14 @@ public class DDLWork implements Serializable {
    */
   public void setShowLocksDesc(ShowLocksDesc showLocksDesc) {
     this.showLocksDesc = showLocksDesc;
+  }
+
+  public void setShowCompactionsDesc(ShowCompactionsDesc showCompactionsDesc) {
+    this.showCompactionsDesc = showCompactionsDesc;
+  }
+
+  public void setShowTxnsDesc(ShowTxnsDesc showTxnsDesc) {
+    this.showTxnsDesc = showTxnsDesc;
   }
 
   /**
@@ -795,6 +870,7 @@ public class DDLWork implements Serializable {
   /**
    * @return information about the partitions we want to add.
    */
+  @Explain(displayName = "Add Partition Operator")
   public AddPartitionDesc getAddPartitionDesc() {
     return addPartitionDesc;
   }
@@ -1024,5 +1100,21 @@ public class DDLWork implements Serializable {
 
   public void setTruncateTblDesc(TruncateTableDesc truncateTblDesc) {
     this.truncateTblDesc = truncateTblDesc;
+  }
+
+  /**
+   * @return information about the table partition to be exchanged
+   */
+  public AlterTableExchangePartition getAlterTableExchangePartition() {
+    return this.alterTableExchangePartition;
+  }
+
+  /**
+   * @param alterTableExchangePartition
+   *          set the value of the table partition to be exchanged
+   */
+  public void setAlterTableExchangePartition(
+      AlterTableExchangePartition alterTableExchangePartition) {
+    this.alterTableExchangePartition = alterTableExchangePartition;
   }
 }

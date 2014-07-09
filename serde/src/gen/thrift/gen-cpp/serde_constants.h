@@ -29,6 +29,8 @@ class serdeConstants {
   std::string MAPKEY_DELIM;
   std::string QUOTE_CHAR;
   std::string ESCAPE_CHAR;
+  std::string HEADER_COUNT;
+  std::string FOOTER_COUNT;
   std::string VOID_TYPE_NAME;
   std::string BOOLEAN_TYPE_NAME;
   std::string TINYINT_TYPE_NAME;
@@ -38,6 +40,8 @@ class serdeConstants {
   std::string FLOAT_TYPE_NAME;
   std::string DOUBLE_TYPE_NAME;
   std::string STRING_TYPE_NAME;
+  std::string CHAR_TYPE_NAME;
+  std::string VARCHAR_TYPE_NAME;
   std::string DATE_TYPE_NAME;
   std::string DATETIME_TYPE_NAME;
   std::string TIMESTAMP_TYPE_NAME;
@@ -51,6 +55,7 @@ class serdeConstants {
   std::string LIST_COLUMN_TYPES;
   std::set<std::string>  PrimitiveTypes;
   std::set<std::string>  CollectionTypes;
+  std::set<std::string>  IntegralTypes;
 };
 
 extern const serdeConstants g_serde_constants;

@@ -32,9 +32,6 @@ WITH SERDEPROPERTIES (
 )
 STORED AS TEXTFILE
 POSTHOOK: type: CREATETABLE
-ABSTRACT SYNTAX TREE:
-  (TOK_CREATETABLE (TOK_TABNAME serde_regex) TOK_LIKETABLE (TOK_TABCOLLIST (TOK_TABCOL host TOK_STRING) (TOK_TABCOL identity TOK_STRING) (TOK_TABCOL user TOK_STRING) (TOK_TABCOL time TOK_STRING) (TOK_TABCOL request TOK_STRING) (TOK_TABCOL status TOK_STRING) (TOK_TABCOL size TOK_INT) (TOK_TABCOL referer TOK_STRING) (TOK_TABCOL agent TOK_STRING)) (TOK_TABLESERIALIZER (TOK_SERDENAME 'org.apache.hadoop.hive.serde2.RegexSerDe' (TOK_TABLEPROPERTIES (TOK_TABLEPROPLIST (TOK_TABLEPROPERTY "input.regex" "([^ ]*) ([^ ]*) ([^ ]*) (-|\\[[^\\]]*\\]) ([^ \"]*|\"[^\"]*\") (-|[0-9]*) (-|[0-9]*)(?: ([^ \"]*|\"[^\"]*\") ([^ \"]*|\"[^\"]*\"))?"))))) TOK_TBLTEXTFILE)
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -43,16 +40,12 @@ STAGE PLANS:
       Create Table Operator:
         Create Table
           columns: host string, identity string, user string, time string, request string, status string, size int, referer string, agent string
-          if not exists: false
           input format: org.apache.hadoop.mapred.TextInputFormat
-          # buckets: -1
           output format: org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat
           serde name: org.apache.hadoop.hive.serde2.RegexSerDe
           serde properties:
             input.regex ([^ ]*) ([^ ]*) ([^ ]*) (-|\[[^\]]*\]) ([^ "]*|"[^"]*") (-|[0-9]*) (-|[0-9]*)(?: ([^ "]*|"[^"]*") ([^ "]*|"[^"]*"))?
           name: serde_regex
-          isExternal: false
-
 
 PREHOOK: query: CREATE TABLE serde_regex(
   host STRING,
@@ -70,6 +63,7 @@ WITH SERDEPROPERTIES (
 )
 STORED AS TEXTFILE
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: CREATE TABLE serde_regex(
   host STRING,
   identity STRING,
@@ -86,18 +80,23 @@ WITH SERDEPROPERTIES (
 )
 STORED AS TEXTFILE
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@serde_regex
-PREHOOK: query: LOAD DATA LOCAL INPATH "../data/files/apache.access.log" INTO TABLE serde_regex
+PREHOOK: query: LOAD DATA LOCAL INPATH "../../data/files/apache.access.log" INTO TABLE serde_regex
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@serde_regex
-POSTHOOK: query: LOAD DATA LOCAL INPATH "../data/files/apache.access.log" INTO TABLE serde_regex
+POSTHOOK: query: LOAD DATA LOCAL INPATH "../../data/files/apache.access.log" INTO TABLE serde_regex
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@serde_regex
-PREHOOK: query: LOAD DATA LOCAL INPATH "../data/files/apache.access.2.log" INTO TABLE serde_regex
+PREHOOK: query: LOAD DATA LOCAL INPATH "../../data/files/apache.access.2.log" INTO TABLE serde_regex
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@serde_regex
-POSTHOOK: query: LOAD DATA LOCAL INPATH "../data/files/apache.access.2.log" INTO TABLE serde_regex
+POSTHOOK: query: LOAD DATA LOCAL INPATH "../../data/files/apache.access.2.log" INTO TABLE serde_regex
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@serde_regex
 PREHOOK: query: SELECT * FROM serde_regex ORDER BY time
 PREHOOK: type: QUERY
@@ -129,7 +128,7 @@ POSTHOOK: Input: default@serde_regex
 POSTHOOK: Output: default@serde_regex
 PREHOOK: query: EXPLAIN
 CREATE TABLE serde_regex1(
-  key decimal,
+  key decimal(38,18),
   value int)
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
 WITH SERDEPROPERTIES (
@@ -139,7 +138,7 @@ STORED AS TEXTFILE
 PREHOOK: type: CREATETABLE
 POSTHOOK: query: EXPLAIN
 CREATE TABLE serde_regex1(
-  key decimal,
+  key decimal(38,18),
   value int)
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
 WITH SERDEPROPERTIES (
@@ -147,9 +146,6 @@ WITH SERDEPROPERTIES (
 )
 STORED AS TEXTFILE
 POSTHOOK: type: CREATETABLE
-ABSTRACT SYNTAX TREE:
-  (TOK_CREATETABLE (TOK_TABNAME serde_regex1) TOK_LIKETABLE (TOK_TABCOLLIST (TOK_TABCOL key TOK_DECIMAL) (TOK_TABCOL value TOK_INT)) (TOK_TABLESERIALIZER (TOK_SERDENAME 'org.apache.hadoop.hive.serde2.RegexSerDe' (TOK_TABLEPROPERTIES (TOK_TABLEPROPLIST (TOK_TABLEPROPERTY "input.regex" "([^ ]*) ([^ ]*)"))))) TOK_TBLTEXTFILE)
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -157,20 +153,16 @@ STAGE PLANS:
   Stage: Stage-0
       Create Table Operator:
         Create Table
-          columns: key decimal, value int
-          if not exists: false
+          columns: key decimal(38,18), value int
           input format: org.apache.hadoop.mapred.TextInputFormat
-          # buckets: -1
           output format: org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat
           serde name: org.apache.hadoop.hive.serde2.RegexSerDe
           serde properties:
             input.regex ([^ ]*) ([^ ]*)
           name: serde_regex1
-          isExternal: false
-
 
 PREHOOK: query: CREATE TABLE serde_regex1(
-  key decimal,
+  key decimal(38,18),
   value int)
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
 WITH SERDEPROPERTIES (
@@ -178,8 +170,9 @@ WITH SERDEPROPERTIES (
 )
 STORED AS TEXTFILE
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: CREATE TABLE serde_regex1(
-  key decimal,
+  key decimal(38,18),
   value int)
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
 WITH SERDEPROPERTIES (
@@ -187,23 +180,27 @@ WITH SERDEPROPERTIES (
 )
 STORED AS TEXTFILE
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@serde_regex1
-PREHOOK: query: LOAD DATA LOCAL INPATH "../data/files/kv7.txt" INTO TABLE serde_regex1
+PREHOOK: query: LOAD DATA LOCAL INPATH "../../data/files/kv7.txt" INTO TABLE serde_regex1
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@serde_regex1
-POSTHOOK: query: LOAD DATA LOCAL INPATH "../data/files/kv7.txt" INTO TABLE serde_regex1
+POSTHOOK: query: LOAD DATA LOCAL INPATH "../../data/files/kv7.txt" INTO TABLE serde_regex1
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@serde_regex1
-PREHOOK: query: SELECT key, value FROM serde_regex1 ORDER BY key
+PREHOOK: query: SELECT key, value FROM serde_regex1 ORDER BY key, value
 PREHOOK: type: QUERY
 PREHOOK: Input: default@serde_regex1
 #### A masked pattern was here ####
-POSTHOOK: query: SELECT key, value FROM serde_regex1 ORDER BY key
+POSTHOOK: query: SELECT key, value FROM serde_regex1 ORDER BY key, value
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@serde_regex1
 #### A masked pattern was here ####
+NULL	0
 -1234567890.123456789	-1234567890
--4.4E+3	4400
+-4400	4400
 -1255.49	-1255
 -1.122	-11
 -1.12	-1
@@ -213,7 +210,7 @@ POSTHOOK: Input: default@serde_regex1
 -0.3	0
 0	0
 0	0
-1E-99	0
+0	0
 0.01	0
 0.02	0
 0.1	0
@@ -221,7 +218,7 @@ POSTHOOK: Input: default@serde_regex1
 0.3	0
 0.33	0
 0.333	0
-0.9999999999999999999999999	1
+1	1
 1	1
 1	1
 1.12	1
@@ -232,14 +229,13 @@ POSTHOOK: Input: default@serde_regex1
 3.14	3
 3.14	3
 3.14	4
-1E+1	10
-2E+1	20
-1E+2	100
+10	10
+20	20
+100	100
 124	124
 125.2	125
-2E+2	200
+200	200
 1234567890.12345678	1234567890
-1E+99	0
 PREHOOK: query: DROP TABLE serde_regex1
 PREHOOK: type: DROPTABLE
 PREHOOK: Input: default@serde_regex1

@@ -1,46 +1,24 @@
-/*
- *  Copyright (c) 2002,2003,2004,2005 Marc Prud'hommeaux
- *  All rights reserved.
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Redistribution and use in source and binary forms,
- *  with or without modification, are permitted provided
- *  that the following conditions are met:
- *
- *  Redistributions of source code must retain the above
- *  copyright notice, this list of conditions and the following
- *  disclaimer.
- *  Redistributions in binary form must reproduce the above
- *  copyright notice, this list of conditions and the following
- *  disclaimer in the documentation and/or other materials
- *  provided with the distribution.
- *  Neither the name of the <ORGANIZATION> nor the names
- *  of its contributors may be used to endorse or promote
- *  products derived from this software without specific
- *  prior written permission.
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS
- *  AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- *  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- *  PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- *  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- *  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- *  BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- *  OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
- *  IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- *  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *  This software is hosted by SourceForge.
- *  SourceForge is a trademark of VA Linux Systems, Inc.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 /*
  * This source file is based on code taken from SQLLine 1.0.2
- * The license above originally appeared in src/sqlline/SqlLine.java
- * http://sqlline.sourceforge.net/
+ * See SQLLine notice in LICENSE
  */
 package org.apache.hive.beeline;
 
@@ -52,6 +30,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Properties;
+import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -59,26 +40,28 @@ import jline.ArgumentCompletor;
 import jline.Completor;
 
 class DatabaseConnection {
+  private static final String HIVE_AUTH_USER = "user";
+  private static final String HIVE_AUTH_PASSWD = "password";
+  private static final String HIVE_VAR_PREFIX = "hivevar:";
+  private static final String HIVE_CONF_PREFIX = "hiveconf:";
+
   private final BeeLine beeLine;
   private Connection connection;
   private DatabaseMetaData meta;
   private final String driver;
   private final String url;
-  private final String username;
-  private final String password;
+  private final Properties info;
   private Schema schema = null;
   private Completor sqlCompletor = null;
 
 
   public DatabaseConnection(BeeLine beeLine, String driver, String url,
-      String username, String password) throws SQLException {
+       Properties info) throws SQLException {
     this.beeLine = beeLine;
     this.driver = driver;
     this.url = url;
-    this.username = username;
-    this.password = password;
+    this.info = info;
   }
-
 
   @Override
   public String toString() {
@@ -149,7 +132,17 @@ class DatabaseConnection {
       return beeLine.error(e);
     }
 
-    setConnection(DriverManager.getConnection(getUrl(), username, password));
+    Map<String, String> hiveVars = beeLine.getOpts().getHiveVariables();
+    for (Map.Entry<String, String> var : hiveVars.entrySet()) {
+      info.put(HIVE_VAR_PREFIX + var.getKey(), var.getValue());
+    }
+
+    Map<String, String> hiveConfVars = beeLine.getOpts().getHiveConfVariables();
+    for (Map.Entry<String, String> var : hiveConfVars.entrySet()) {
+      info.put(HIVE_CONF_PREFIX + var.getKey(), var.getValue());
+    }
+
+    setConnection(DriverManager.getConnection(getUrl(), info));
     setDatabaseMetaData(getConnection().getMetaData());
 
     try {

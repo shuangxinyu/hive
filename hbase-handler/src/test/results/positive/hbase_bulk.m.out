@@ -14,6 +14,7 @@ INPUTFORMAT 'org.apache.hadoop.mapred.TextInputFormat'
 OUTPUTFORMAT 'org.apache.hadoop.hive.hbase.HiveHFileOutputFormat'
 #### A masked pattern was here ####
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: -- this is a dummy table used for controlling how the HFiles are
 -- created
 create table hbsort(key string, val string, val2 string)
@@ -22,6 +23,7 @@ INPUTFORMAT 'org.apache.hadoop.mapred.TextInputFormat'
 OUTPUTFORMAT 'org.apache.hadoop.hive.hbase.HiveHFileOutputFormat'
 #### A masked pattern was here ####
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@hbsort
 PREHOOK: query: -- this is a dummy table used for controlling how the input file
 -- for TotalOrderPartitioner is created
@@ -33,7 +35,10 @@ inputformat
 'org.apache.hadoop.mapred.TextInputFormat'
 outputformat
 'org.apache.hadoop.hive.ql.io.HiveNullValueSequenceFileOutputFormat'
+#### A masked pattern was here ####
 PREHOOK: type: CREATETABLE
+#### A masked pattern was here ####
+PREHOOK: Output: database:default
 POSTHOOK: query: -- this is a dummy table used for controlling how the input file
 -- for TotalOrderPartitioner is created
 create table hbpartition(part_break string)
@@ -44,7 +49,10 @@ inputformat
 'org.apache.hadoop.mapred.TextInputFormat'
 outputformat
 'org.apache.hadoop.hive.ql.io.HiveNullValueSequenceFileOutputFormat'
+#### A masked pattern was here ####
 POSTHOOK: type: CREATETABLE
+#### A masked pattern was here ####
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@hbpartition
 PREHOOK: query: -- this should produce one file, but we do not
 -- know what it will be called, so we will copy it to a well known
@@ -91,7 +99,6 @@ cluster by value
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@src
 POSTHOOK: Output: default@hbsort
-POSTHOOK: Lineage: hbpartition.part_break SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
 POSTHOOK: Lineage: hbsort.key SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
 POSTHOOK: Lineage: hbsort.val EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
 POSTHOOK: Lineage: hbsort.val2 EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
@@ -114,10 +121,6 @@ drop table hbsort
 POSTHOOK: type: DROPTABLE
 POSTHOOK: Input: default@hbsort
 POSTHOOK: Output: default@hbsort
-POSTHOOK: Lineage: hbpartition.part_break SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
-POSTHOOK: Lineage: hbsort.key SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
-POSTHOOK: Lineage: hbsort.val EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: hbsort.val2 EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
 PREHOOK: query: drop table hbpartition
 PREHOOK: type: DROPTABLE
 PREHOOK: Input: default@hbpartition
@@ -126,7 +129,3 @@ POSTHOOK: query: drop table hbpartition
 POSTHOOK: type: DROPTABLE
 POSTHOOK: Input: default@hbpartition
 POSTHOOK: Output: default@hbpartition
-POSTHOOK: Lineage: hbpartition.part_break SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
-POSTHOOK: Lineage: hbsort.key SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
-POSTHOOK: Lineage: hbsort.val EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: hbsort.val2 EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]

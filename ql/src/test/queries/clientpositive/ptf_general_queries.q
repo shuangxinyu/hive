@@ -13,7 +13,7 @@ CREATE TABLE part(
     p_comment STRING
 );
 
-LOAD DATA LOCAL INPATH '../data/files/part_tiny.txt' overwrite into table part;
+LOAD DATA LOCAL INPATH '../../data/files/part_tiny.txt' overwrite into table part;
 
 -- 1. testNoPTFNoWindowing
 select p_mfgr, p_name, p_size
@@ -23,10 +23,10 @@ sort by p_name ;
         
 -- 2. testUDAFsNoWindowingNoPTFNoGBY
 select p_mfgr,p_name, p_retailprice,  
-sum(p_retailprice) over(partition by p_mfgr order by p_mfgr) as s,
-min(p_retailprice) over(partition by p_mfgr order by p_mfgr) as mi,
-max(p_retailprice) over(partition by p_mfgr order by p_mfgr) as ma,
-avg(p_retailprice) over(partition by p_mfgr order by p_mfgr) as av 
+sum(p_retailprice) over(partition by p_mfgr order by p_name) as s,
+min(p_retailprice) over(partition by p_mfgr order by p_name) as mi,
+max(p_retailprice) over(partition by p_mfgr order by p_name) as ma,
+avg(p_retailprice) over(partition by p_mfgr order by p_name) as av 
 from part 
 ;        
         

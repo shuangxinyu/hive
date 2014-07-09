@@ -19,9 +19,13 @@
 package org.apache.hadoop.hive.ql.udf;
 
 import org.apache.hadoop.hive.ql.exec.UDF;
-import org.apache.hadoop.hive.serde2.io.BigDecimalWritable;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedExpressions;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDecimalToLong;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.CastDoubleToLong;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.CastTimestampToLongViaLongToLong;
 import org.apache.hadoop.hive.serde2.io.ByteWritable;
 import org.apache.hadoop.hive.serde2.io.DoubleWritable;
+import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.apache.hadoop.hive.serde2.io.ShortWritable;
 import org.apache.hadoop.hive.serde2.io.TimestampWritable;
 import org.apache.hadoop.hive.serde2.lazy.LazyLong;
@@ -36,6 +40,8 @@ import org.apache.hadoop.io.Text;
  * UDFToLong.
  *
  */
+@VectorizedExpressions({CastTimestampToLongViaLongToLong.class, CastDoubleToLong.class,
+    CastDecimalToLong.class})
 public class UDFToLong extends UDF {
   private final LongWritable longWritable = new LongWritable();
 
@@ -193,11 +199,11 @@ public class UDFToLong extends UDF {
     }
   }
 
-  public LongWritable evaluate(BigDecimalWritable i) {
+  public LongWritable evaluate(HiveDecimalWritable i) {
     if (i == null) {
       return null;
     } else {
-      longWritable.set(i.getBigDecimal().longValue());
+      longWritable.set(i.getHiveDecimal().longValue());
       return longWritable;
     }
   }

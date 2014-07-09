@@ -19,7 +19,7 @@ package org.apache.hadoop.hive.ql.index;
 
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 
 /**
  * IndexSearchCondition represents an individual search condition
@@ -31,7 +31,17 @@ public class IndexSearchCondition
   private ExprNodeColumnDesc columnDesc;
   private String comparisonOp;
   private ExprNodeConstantDesc constantDesc;
-  private ExprNodeDesc comparisonExpr;
+  private ExprNodeGenericFuncDesc comparisonExpr;
+
+  private String[] fields;
+
+  public IndexSearchCondition(
+      ExprNodeColumnDesc columnDesc,
+      String comparisonOp,
+      ExprNodeConstantDesc constantDesc,
+      ExprNodeGenericFuncDesc comparisonExpr) {
+    this(columnDesc, comparisonOp, constantDesc, comparisonExpr, null);
+  }
 
   /**
    * Constructs a search condition, which takes the form
@@ -50,12 +60,14 @@ public class IndexSearchCondition
     ExprNodeColumnDesc columnDesc,
     String comparisonOp,
     ExprNodeConstantDesc constantDesc,
-    ExprNodeDesc comparisonExpr) {
+    ExprNodeGenericFuncDesc comparisonExpr,
+    String[] fields) {
 
     this.columnDesc = columnDesc;
     this.comparisonOp = comparisonOp;
     this.constantDesc = constantDesc;
     this.comparisonExpr = comparisonExpr;
+    this.fields = fields;
   }
 
   public void setColumnDesc(ExprNodeColumnDesc columnDesc) {
@@ -82,12 +94,16 @@ public class IndexSearchCondition
     return constantDesc;
   }
 
-  public void setComparisonExpr(ExprNodeDesc comparisonExpr) {
+  public void setComparisonExpr(ExprNodeGenericFuncDesc comparisonExpr) {
     this.comparisonExpr = comparisonExpr;
   }
 
-  public ExprNodeDesc getComparisonExpr() {
+  public ExprNodeGenericFuncDesc getComparisonExpr() {
     return comparisonExpr;
+  }
+
+  public String[] getFields() {
+    return fields;
   }
 
   @Override

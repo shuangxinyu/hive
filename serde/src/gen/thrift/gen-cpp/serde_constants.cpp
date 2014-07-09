@@ -39,6 +39,10 @@ serdeConstants::serdeConstants() {
 
   ESCAPE_CHAR = "escape.delim";
 
+  HEADER_COUNT = "skip.header.line.count";
+
+  FOOTER_COUNT = "skip.footer.line.count";
+
   VOID_TYPE_NAME = "void";
 
   BOOLEAN_TYPE_NAME = "boolean";
@@ -56,6 +60,10 @@ serdeConstants::serdeConstants() {
   DOUBLE_TYPE_NAME = "double";
 
   STRING_TYPE_NAME = "string";
+
+  CHAR_TYPE_NAME = "char";
+
+  VARCHAR_TYPE_NAME = "varchar";
 
   DATE_TYPE_NAME = "date";
 
@@ -88,6 +96,8 @@ serdeConstants::serdeConstants() {
   PrimitiveTypes.insert("float");
   PrimitiveTypes.insert("double");
   PrimitiveTypes.insert("string");
+  PrimitiveTypes.insert("varchar");
+  PrimitiveTypes.insert("char");
   PrimitiveTypes.insert("date");
   PrimitiveTypes.insert("datetime");
   PrimitiveTypes.insert("timestamp");
@@ -96,6 +106,11 @@ serdeConstants::serdeConstants() {
 
   CollectionTypes.insert("array");
   CollectionTypes.insert("map");
+
+  IntegralTypes.insert("tinyint");
+  IntegralTypes.insert("smallint");
+  IntegralTypes.insert("int");
+  IntegralTypes.insert("bigint");
 
 }
 

@@ -1,51 +1,30 @@
-/*
- *  Copyright (c) 2002,2003,2004,2005 Marc Prud'hommeaux
- *  All rights reserved.
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Redistribution and use in source and binary forms,
- *  with or without modification, are permitted provided
- *  that the following conditions are met:
- *
- *  Redistributions of source code must retain the above
- *  copyright notice, this list of conditions and the following
- *  disclaimer.
- *  Redistributions in binary form must reproduce the above
- *  copyright notice, this list of conditions and the following
- *  disclaimer in the documentation and/or other materials
- *  provided with the distribution.
- *  Neither the name of the <ORGANIZATION> nor the names
- *  of its contributors may be used to endorse or promote
- *  products derived from this software without specific
- *  prior written permission.
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS
- *  AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- *  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- *  PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- *  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- *  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- *  BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- *  OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
- *  IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- *  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *  This software is hosted by SourceForge.
- *  SourceForge is a trademark of VA Linux Systems, Inc.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 /*
  * This source file is based on code taken from SQLLine 1.0.2
- * The license above originally appeared in src/sqlline/SqlLine.java
- * http://sqlline.sourceforge.net/
+ * See SQLLine notice in LICENSE
  */
 package org.apache.hive.beeline;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
@@ -80,7 +59,9 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
+import java.util.Properties;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.SortedSet;
@@ -96,7 +77,15 @@ import jline.ClassNameCompletor;
 import jline.Completor;
 import jline.ConsoleReader;
 import jline.FileNameCompletor;
+import jline.History;
 import jline.SimpleCompletor;
+import org.apache.hadoop.io.IOUtils;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.GnuParser;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 
 
 /**
@@ -115,10 +104,10 @@ import jline.SimpleCompletor;
  * </ul>
  *
  */
-public class BeeLine {
+public class BeeLine implements Closeable {
   private static final ResourceBundle resourceBundle =
-      ResourceBundle.getBundle(BeeLine.class.getName());
-  private BeeLineSignalHandler signalHandler = null;
+      ResourceBundle.getBundle(BeeLine.class.getSimpleName());
+  private final BeeLineSignalHandler signalHandler = null;
   private static final String separator = System.getProperty("line.separator");
   private boolean exit = false;
   private final DatabaseConnections connections = new DatabaseConnections();
@@ -137,11 +126,22 @@ public class BeeLine {
   private List<String> batch = null;
   private final Reflector reflector;
 
+  private History history;
+
+  private static final Options options = new Options();
+
   public static final String BEELINE_DEFAULT_JDBC_DRIVER = "org.apache.hive.jdbc.HiveDriver";
   public static final String BEELINE_DEFAULT_JDBC_URL = "jdbc:hive2://";
 
   private static final String SCRIPT_OUTPUT_PREFIX = ">>>";
   private static final int SCRIPT_OUTPUT_PAD_SIZE = 5;
+
+  private static final int ERRNO_OK = 0;
+  private static final int ERRNO_ARGS = 1;
+  private static final int ERRNO_OTHER = 2;
+
+  private static final String HIVE_VAR_PREFIX = "--hivevar";
+  private static final String HIVE_CONF_PREFIX = "--hiveconf";
 
   private final Map<Object, Object> formats = map(new Object[] {
       "vertical", new VerticalOutputFormat(this),
@@ -238,8 +238,12 @@ public class BeeLine {
           null),
       new ReflectiveCommandHandler(this, new String[] {"sql"},
           null),
+      new ReflectiveCommandHandler(this, new String[] {"sh"},
+          null),
       new ReflectiveCommandHandler(this, new String[] {"call"},
           null),
+      new ReflectiveCommandHandler(this, new String[] {"nullemptystring"},
+          new Completor[] {new BooleanCompletor()}),
   };
 
 
@@ -256,6 +260,88 @@ public class BeeLine {
     } catch (Throwable t) {
       throw new ExceptionInInitializerError("jline-missing");
     }
+  }
+
+  static {
+    // -d <driver class>
+    options.addOption(OptionBuilder
+        .hasArg()
+        .withArgName("driver class")
+        .withDescription("the driver class to use")
+        .create('d'));
+
+    // -u <database url>
+    options.addOption(OptionBuilder
+        .hasArg()
+        .withArgName("database url")
+        .withDescription("the JDBC URL to connect to")
+        .create('u'));
+
+    // -n <username>
+    options.addOption(OptionBuilder
+        .hasArg()
+        .withArgName("username")
+        .withDescription("the username to connect as")
+        .create('n'));
+
+    // -p <password>
+    options.addOption(OptionBuilder
+        .hasArg()
+        .withArgName("password")
+        .withDescription("the password to connect as")
+        .create('p'));
+
+    // -a <authType>
+    options.addOption(OptionBuilder
+        .hasArg()
+        .withArgName("authType")
+        .withDescription("the authentication type")
+        .create('a'));
+
+    // -i <init file>
+    options.addOption(OptionBuilder
+        .hasArg()
+        .withArgName("init")
+        .withDescription("script file for initialization")
+        .create('i'));
+
+    // -e <query>
+    options.addOption(OptionBuilder
+        .hasArgs()
+        .withArgName("query")
+        .withDescription("query that should be executed")
+        .create('e'));
+
+    // -f <script file>
+    options.addOption(OptionBuilder
+        .hasArg()
+        .withArgName("file")
+        .withDescription("script file that should be executed")
+        .create('f'));
+
+    // -help
+    options.addOption(OptionBuilder
+        .withLongOpt("help")
+        .withDescription("display this message")
+        .create('h'));
+
+    // Substitution option --hivevar
+    options.addOption(OptionBuilder
+        .withValueSeparator()
+        .hasArgs(2)
+        .withArgName("key=value")
+        .withLongOpt("hivevar")
+        .withDescription("hive variable name and value")
+        .create());
+
+    //hive conf option --hiveconf
+    options.addOption(OptionBuilder
+        .withValueSeparator()
+        .hasArgs(2)
+        .withArgName("property=value")
+        .withLongOpt("hiveconf")
+        .withDescription("Use value for given property")
+        .create());
   }
 
 
@@ -367,6 +453,7 @@ public class BeeLine {
   /**
    * Starts the program with redirected input. For redirected output,
    * setOutputStream() and setErrorStream can be used.
+   * Exits with 0 on success, 1 on invalid arguments, and 2 on any other error
    *
    * @param args
    *          same as main()
@@ -377,12 +464,10 @@ public class BeeLine {
   public static void mainWithInputRedirection(String[] args, InputStream inputStream)
       throws IOException {
     BeeLine beeLine = new BeeLine();
-    beeLine.begin(args, inputStream);
+    int status = beeLine.begin(args, inputStream);
 
-    // exit the system: useful for Hypersonic and other
-    // badly-behaving systems
     if (!Boolean.getBoolean(BeeLineOpts.PROPERTY_NAME_EXIT)) {
-      System.exit(0);
+      System.exit(status);
     }
   }
 
@@ -512,52 +597,72 @@ public class BeeLine {
   }
 
 
+  public class BeelineParser extends GnuParser {
+
+    @Override
+    protected void processOption(final String arg, final ListIterator iter) throws  ParseException {
+      if ((arg.startsWith("--")) && !(arg.equals(HIVE_VAR_PREFIX) || (arg.equals(HIVE_CONF_PREFIX)) || (arg.equals("--help")))) {
+        String stripped = arg.substring(2, arg.length());
+        String[] parts = split(stripped, "=");
+        debug(loc("setting-prop", Arrays.asList(parts)));
+        if (parts.length >= 2) {
+          getOpts().set(parts[0], parts[1], true);
+        } else {
+          getOpts().set(parts[0], "true", true);
+        }
+      } else {
+        super.processOption(arg, iter);
+      }
+    }
+
+  }
+
   boolean initArgs(String[] args) {
     List<String> commands = new LinkedList<String>();
     List<String> files = new LinkedList<String>();
-    String driver = null, user = null, pass = null, url = null, cmd = null;
 
-    for (int i = 0; i < args.length; i++) {
-      if (args[i].equals("--help") || args[i].equals("-h")) {
-        usage();
-        return false;
-      }
+    CommandLine cl;
+    BeelineParser beelineParser;
 
-      // -- arguments are treated as properties
-      if (args[i].startsWith("--")) {
-        String[] parts = split(args[i].substring(2), "=");
-        debug(loc("setting-prop", Arrays.asList(parts)));
-        if (parts.length > 0) {
-          boolean ret;
-
-          if (parts.length >= 2) {
-            ret = getOpts().set(parts[0], parts[1], true);
-          } else {
-            ret = getOpts().set(parts[0], "true", true);
-          }
-
-          if (!ret) {
-            return false;
-          }
-
-        }
-        continue;
-      }
-
-      if (args[i].equals("-d")) {
-        driver = args[i++ + 1];
-      } else if (args[i].equals("-n")) {
-        user = args[i++ + 1];
-      } else if (args[i].equals("-p")) {
-        pass = args[i++ + 1];
-      } else if (args[i].equals("-u")) {
-        url = args[i++ + 1];
-      } else if (args[i].equals("-e")) {
-        commands.add(args[i++ + 1]);
-      } else {
-        files.add(args[i]);
-      }
+    try {
+      beelineParser = new BeelineParser();
+      cl = beelineParser.parse(options, args);
+    } catch (ParseException e1) {
+      output(e1.getMessage());
+      return false;
     }
+
+    String driver = null, user = null, pass = null, url = null;
+    String auth = null;
+
+
+    if (cl.hasOption("help")) {
+      // Return false here, so usage will be printed.
+      return false;
+    }
+
+    Properties hiveVars = cl.getOptionProperties("hivevar");
+    for (String key : hiveVars.stringPropertyNames()) {
+      getOpts().getHiveVariables().put(key, hiveVars.getProperty(key));
+    }
+
+    Properties hiveConfs = cl.getOptionProperties("hiveconf");
+    for (String key : hiveConfs.stringPropertyNames()) {
+      getOpts().getHiveConfVariables().put(key, hiveConfs.getProperty(key));
+    }
+
+    driver = cl.getOptionValue("d");
+    auth = cl.getOptionValue("a");
+    user = cl.getOptionValue("n");
+    getOpts().setAuthType(auth);
+    pass = cl.getOptionValue("p");
+    url = cl.getOptionValue("u");
+    getOpts().setInitFile(cl.getOptionValue("i"));
+    getOpts().setScriptFile(cl.getOptionValue("f"));
+    if (cl.getOptionValues('e') != null) {
+      commands = Arrays.asList(cl.getOptionValues('e'));
+    }
+
 
     // TODO: temporary disable this for easier debugging
     /*
@@ -584,7 +689,6 @@ public class BeeLine {
       dispatch("!properties " + i.next());
     }
 
-
     if (commands.size() > 0) {
       // for single command execute, disable color
       getOpts().setColor(false);
@@ -606,7 +710,7 @@ public class BeeLine {
    * to the appropriate {@link CommandHandler} until the
    * global variable <code>exit</code> is true.
    */
-  void begin(String[] args, InputStream inputStream) throws IOException {
+  public int begin(String[] args, InputStream inputStream) throws IOException {
     try {
       // load the options first, so we can override on the command line
       getOpts().load();
@@ -614,42 +718,79 @@ public class BeeLine {
       // nothing
     }
 
-    ConsoleReader reader = getConsoleReader(inputStream);
-    if (!(initArgs(args))) {
-      usage();
-      return;
-    }
-
     try {
-      info(getApplicationTitle());
-    } catch (Exception e) {
-      // ignore
-    }
-
-    while (!exit) {
-      try {
-        dispatch(reader.readLine(getPrompt()));
-      } catch (EOFException eof) {
-        // CTRL-D
-        commands.quit(null);
-      } catch (Throwable t) {
-        handleException(t);
+      if (!initArgs(args)) {
+        usage();
+        return ERRNO_ARGS;
       }
+
+      if (getOpts().getScriptFile() != null) {
+        return executeFile(getOpts().getScriptFile());
+      }
+      try {
+        info(getApplicationTitle());
+      } catch (Exception e) {
+        // ignore
+      }
+      ConsoleReader reader = getConsoleReader(inputStream);
+      return execute(reader, false);
+    } finally {
+      close();
     }
-    // ### NOTE jvs 10-Aug-2004: Clean up any outstanding
-    // connections automatically.
-    commands.closeall(null);
   }
 
+  int runInit() {
+    String initFile = getOpts().getInitFile();
+    if (initFile != null) {
+      info("Running init script " + initFile);
+      try {
+        return executeFile(initFile);
+      } finally {
+        exit = false;
+      }
+    }
+    return ERRNO_OK;
+  }
+
+  private int executeFile(String fileName) {
+    FileInputStream initStream = null;
+    try {
+      initStream = new FileInputStream(fileName);
+      return execute(getConsoleReader(initStream), true);
+    } catch (Throwable t) {
+      handleException(t);
+      return ERRNO_OTHER;
+    } finally {
+      IOUtils.closeStream(initStream);
+      consoleReader = null;
+      output("");   // dummy new line
+    }
+  }
+
+  private int execute(ConsoleReader reader, boolean exitOnError) {
+    while (!exit) {
+      try {
+        // Execute one instruction; terminate on executing a script if there is an error
+        if (!dispatch(reader.readLine(getPrompt())) && exitOnError) {
+          return ERRNO_OTHER;
+        }
+      } catch (Throwable t) {
+        handleException(t);
+        return ERRNO_OTHER;
+      }
+    }
+    return ERRNO_OK;
+  }
+
+  @Override
   public void close() {
-    commands.quit(null);
     commands.closeall(null);
   }
 
   public ConsoleReader getConsoleReader(InputStream inputStream) throws IOException {
     if (inputStream != null) {
       // ### NOTE: fix for sf.net bug 879425.
-      consoleReader = new ConsoleReader(inputStream, new PrintWriter(System.out, true));
+      consoleReader = new ConsoleReader(inputStream, new PrintWriter(getOutputStream(), true));
     } else {
       consoleReader = new ConsoleReader();
     }
@@ -685,6 +826,10 @@ public class BeeLine {
       handleException(e);
     }
 
+    if (inputStream instanceof FileInputStream) {
+      // from script.. no need to load history and no need of completor, either
+      return consoleReader;
+    }
     try {
       // now load in the previous history
       if (historyBuffer != null) {
@@ -707,7 +852,7 @@ public class BeeLine {
    * Dispatch the specified line to the appropriate {@link CommandHandler}.
    *
    * @param line
-   *          the commmand-line to dispatch
+   *          the command-line to dispatch
    * @return true if the command was "successful"
    */
   boolean dispatch(String line) {
@@ -742,19 +887,27 @@ public class BeeLine {
       for (int i = 0; i < commandHandlers.length; i++) {
         String match = commandHandlers[i].matches(line);
         if (match != null) {
-          cmdMap.put(match, commandHandlers[i]);
+          CommandHandler prev = cmdMap.put(match, commandHandlers[i]);
+          if (prev != null) {
+            return error(loc("multiple-matches",
+                Arrays.asList(prev.getName(), commandHandlers[i].getName())));
+          }
         }
       }
 
       if (cmdMap.size() == 0) {
         return error(loc("unknown-command", line));
-      } else if (cmdMap.size() > 1) {
-        return error(loc("multiple-matches",
-            cmdMap.keySet().toString()));
-      } else {
-        return cmdMap.values().iterator().next()
-            .execute(line);
       }
+      if (cmdMap.size() > 1) {
+        // any exact match?
+        CommandHandler handler = cmdMap.get(line);
+        if (handler == null) {
+          return error(loc("multiple-matches", cmdMap.keySet().toString()));
+        }
+        return handler.execute(line);
+      }
+      return cmdMap.values().iterator().next()
+          .execute(line);
     } else {
       return commands.sql(line);
     }
@@ -786,6 +939,11 @@ public class BeeLine {
     if (trimmed.length() == 0) {
       return false;
     }
+
+    if (!getOpts().isAllowMultiLineCommand()) {
+      return false;
+    }
+
     return !trimmed.endsWith(";");
   }
 
@@ -812,7 +970,8 @@ public class BeeLine {
   boolean isComment(String line) {
     // SQL92 comment prefix is "--"
     // beeline also supports shell-style "#" prefix
-    return line.startsWith("#") || line.startsWith("--");
+    String lineTrimmed = line.trim();
+    return lineTrimmed.startsWith("#") || lineTrimmed.startsWith("--");
   }
 
   /**
@@ -1305,6 +1464,8 @@ public class BeeLine {
 
     if (e instanceof SQLException) {
       handleSQLException((SQLException) e);
+    } else if (e instanceof EOFException) {
+      setExit(true);  // CTRL-D
     } else if (!(getOpts().getVerbose())) {
       if (e.getMessage() == null) {
         error(e.getClass().getName());
@@ -1610,7 +1771,7 @@ public class BeeLine {
     }
   }
 
-  BeeLineOpts getOpts() {
+  public BeeLineOpts getOpts() {
     return opts;
   }
 

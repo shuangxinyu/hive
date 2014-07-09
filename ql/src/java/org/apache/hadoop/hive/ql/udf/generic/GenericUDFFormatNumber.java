@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.hive.ql.udf.generic;
 
+import java.text.DecimalFormat;
+
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentLengthException;
@@ -26,18 +28,12 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.StringObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.DoubleObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.FloatObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.IntObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.LongObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.DoubleObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.io.Text;
-
-import java.text.DecimalFormat;
-import java.text.NumberFormat;
-import java.lang.Number;
-import java.lang.NumberFormatException;
 
 /**
  * Generic UDF for format_number function
@@ -58,11 +54,11 @@ import java.lang.NumberFormatException;
     + "  > SELECT _FUNC_(12332.123456, 4) FROM src LIMIT 1;\n"
     + "  '12,332.1235'")
 public class GenericUDFFormatNumber extends GenericUDF {
-  private ObjectInspector[] argumentOIs;
-  private final Text resultText = new Text();
-  private final StringBuilder pattern = new StringBuilder("");
-  private final DecimalFormat numberFormat = new DecimalFormat("");
-  private int lastDValue = -1;
+  private transient ObjectInspector[] argumentOIs;
+  private transient final Text resultText = new Text();
+  private transient final StringBuilder pattern = new StringBuilder("");
+  private transient final DecimalFormat numberFormat = new DecimalFormat("");
+  private transient int lastDValue = -1;
 
   @Override
   public ObjectInspector initialize(ObjectInspector[] arguments) throws UDFArgumentException {
@@ -171,16 +167,20 @@ public class GenericUDFFormatNumber extends GenericUDF {
     }
 
     double xDoubleValue = 0.0;
+    float xFloatValue = 0.0f;
     int xIntValue = 0;
     long xLongValue = 0L;
 
     PrimitiveObjectInspector xObjectInspector = (PrimitiveObjectInspector)argumentOIs[0];
     switch (xObjectInspector.getPrimitiveCategory()) {
       case VOID:
-      case FLOAT:
       case DOUBLE:
         xDoubleValue = ((DoubleObjectInspector) argumentOIs[0]).get(arguments[0].get());
         resultText.set(numberFormat.format(xDoubleValue));
+        break;
+      case FLOAT:
+        xFloatValue = ((FloatObjectInspector) argumentOIs[0]).get(arguments[0].get());
+        resultText.set(numberFormat.format(xFloatValue));
         break;
       case BYTE:
       case SHORT:

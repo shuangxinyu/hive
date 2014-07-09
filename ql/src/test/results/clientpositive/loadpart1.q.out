@@ -1,18 +1,24 @@
 PREHOOK: query: create table hive_test_src ( col1 string ) stored as textfile
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table hive_test_src ( col1 string ) stored as textfile
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@hive_test_src
-PREHOOK: query: load data local inpath '../data/files/test.dat' overwrite into table hive_test_src
+PREHOOK: query: load data local inpath '../../data/files/test.dat' overwrite into table hive_test_src
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@hive_test_src
-POSTHOOK: query: load data local inpath '../data/files/test.dat' overwrite into table hive_test_src
+POSTHOOK: query: load data local inpath '../../data/files/test.dat' overwrite into table hive_test_src
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@hive_test_src
 PREHOOK: query: create table hive_test_dst ( col1 string ) partitioned by ( pcol1 string , pcol2 string) stored as sequencefile
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table hive_test_dst ( col1 string ) partitioned by ( pcol1 string , pcol2 string) stored as sequencefile
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@hive_test_dst
 PREHOOK: query: insert overwrite table hive_test_dst partition ( pcol1='test_part', pCol2='test_Part') select col1 from hive_test_src
 PREHOOK: type: QUERY
@@ -33,7 +39,6 @@ POSTHOOK: type: QUERY
 POSTHOOK: Input: default@hive_test_dst
 POSTHOOK: Input: default@hive_test_dst@pcol1=test_part/pcol2=test_Part
 #### A masked pattern was here ####
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
 1	test_part	test_Part
 2	test_part	test_Part
 3	test_part	test_Part
@@ -49,7 +54,6 @@ POSTHOOK: type: QUERY
 POSTHOOK: Input: default@hive_test_src
 POSTHOOK: Output: default@hive_test_dst@pcol1=test_part/pcol2=test_Part
 POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
 PREHOOK: query: select * from hive_test_dst where pcol1='test_part' and pcol2='test_part'
 PREHOOK: type: QUERY
 PREHOOK: Input: default@hive_test_dst
@@ -58,8 +62,6 @@ POSTHOOK: query: select * from hive_test_dst where pcol1='test_part' and pcol2='
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@hive_test_dst
 #### A masked pattern was here ####
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
 PREHOOK: query: select * from hive_test_dst where pcol1='test_part'
 PREHOOK: type: QUERY
 PREHOOK: Input: default@hive_test_dst
@@ -70,8 +72,6 @@ POSTHOOK: type: QUERY
 POSTHOOK: Input: default@hive_test_dst
 POSTHOOK: Input: default@hive_test_dst@pcol1=test_part/pcol2=test_Part
 #### A masked pattern was here ####
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
 1	test_part	test_Part
 2	test_part	test_Part
 3	test_part	test_Part
@@ -86,8 +86,6 @@ POSTHOOK: query: select * from hive_test_dst where pcol1='test_part' and pcol2='
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@hive_test_dst
 #### A masked pattern was here ####
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
 PREHOOK: query: select * from hive_test_dst where pcol1='test_Part'
 PREHOOK: type: QUERY
 PREHOOK: Input: default@hive_test_dst
@@ -96,5 +94,3 @@ POSTHOOK: query: select * from hive_test_dst where pcol1='test_Part'
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@hive_test_dst
 #### A masked pattern was here ####
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]
-POSTHOOK: Lineage: hive_test_dst PARTITION(pcol1=test_part,pcol2=test_Part).col1 SIMPLE [(hive_test_src)hive_test_src.FieldSchema(name:col1, type:string, comment:null), ]

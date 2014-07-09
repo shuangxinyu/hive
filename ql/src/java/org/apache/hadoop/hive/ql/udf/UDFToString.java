@@ -20,9 +20,10 @@ package org.apache.hadoop.hive.ql.udf;
 
 import org.apache.hadoop.hive.ql.exec.UDF;
 import org.apache.hadoop.hive.serde2.ByteStream;
-import org.apache.hadoop.hive.serde2.io.BigDecimalWritable;
 import org.apache.hadoop.hive.serde2.io.ByteWritable;
+import org.apache.hadoop.hive.serde2.io.DateWritable;
 import org.apache.hadoop.hive.serde2.io.DoubleWritable;
+import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.apache.hadoop.hive.serde2.io.ShortWritable;
 import org.apache.hadoop.hive.serde2.io.TimestampWritable;
 import org.apache.hadoop.hive.serde2.lazy.LazyInteger;
@@ -69,7 +70,7 @@ public class UDFToString extends UDF {
     } else {
       out.reset();
       LazyInteger.writeUTF8NoException(out, i.get());
-      t.set(out.getData(), 0, out.getCount());
+      t.set(out.getData(), 0, out.getLength());
       return t;
     }
   }
@@ -80,7 +81,7 @@ public class UDFToString extends UDF {
     } else {
       out.reset();
       LazyInteger.writeUTF8NoException(out, i.get());
-      t.set(out.getData(), 0, out.getCount());
+      t.set(out.getData(), 0, out.getLength());
       return t;
     }
   }
@@ -91,7 +92,7 @@ public class UDFToString extends UDF {
     } else {
       out.reset();
       LazyInteger.writeUTF8NoException(out, i.get());
-      t.set(out.getData(), 0, out.getCount());
+      t.set(out.getData(), 0, out.getLength());
       return t;
     }
   }
@@ -102,7 +103,7 @@ public class UDFToString extends UDF {
     } else {
       out.reset();
       LazyLong.writeUTF8NoException(out, i.get());
-      t.set(out.getData(), 0, out.getCount());
+      t.set(out.getData(), 0, out.getLength());
       return t;
     }
   }
@@ -133,6 +134,15 @@ public class UDFToString extends UDF {
       return i;
   }
 
+  public Text evaluate(DateWritable d) {
+    if (d == null) {
+      return null;
+    } else {
+      t.set(d.toString());
+      return t;
+    }
+  }
+
   public Text evaluate(TimestampWritable i) {
     if (i == null) {
       return null;
@@ -142,7 +152,7 @@ public class UDFToString extends UDF {
     }
   }
 
-  public Text evaluate(BigDecimalWritable i) {
+  public Text evaluate(HiveDecimalWritable i) {
     if (i == null) {
       return null;
     } else {

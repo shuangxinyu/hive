@@ -23,6 +23,8 @@ hive_metastoreConstants::hive_metastoreConstants() {
 
   ORIGINAL_LOCATION = "original_location";
 
+  IS_IMMUTABLE = "immutable";
+
   META_TABLE_COLUMNS = "columns";
 
   META_TABLE_COLUMN_TYPES = "columns.types";
@@ -42,6 +44,8 @@ hive_metastoreConstants::hive_metastoreConstants() {
   META_TABLE_SERDE = "serde";
 
   META_TABLE_PARTITION_COLUMNS = "partition_columns";
+
+  META_TABLE_PARTITION_COLUMN_TYPES = "partition_columns.types";
 
   FILE_INPUT_FORMAT = "file.inputformat";
 

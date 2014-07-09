@@ -35,6 +35,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveTypeEntry;
 import org.apache.hadoop.hive.serde2.thrift.ConfigurableTProtocol;
 import org.apache.hadoop.hive.serde2.thrift.TReflectionUtils;
 import org.apache.hadoop.io.BytesWritable;
@@ -72,6 +73,7 @@ public class DynamicSerDe extends AbstractSerDe {
 
   TIOStreamTransport tios;
 
+  @Override
   public void initialize(Configuration job, Properties tbl) throws SerDeException {
     try {
 
@@ -144,6 +146,7 @@ public class DynamicSerDe extends AbstractSerDe {
 
   Object deserializeReuse = null;
 
+  @Override
   public Object deserialize(Writable field) throws SerDeException {
     try {
       if (field instanceof Text) {
@@ -173,9 +176,9 @@ public class DynamicSerDe extends AbstractSerDe {
           dynamicSerDeStructBaseToObjectInspector(btMap.getKeyType()),
           dynamicSerDeStructBaseToObjectInspector(btMap.getValueType()));
     } else if (bt.isPrimitive()) {
-      return PrimitiveObjectInspectorFactory
-          .getPrimitiveJavaObjectInspector(PrimitiveObjectInspectorUtils
-          .getTypeEntryFromPrimitiveJavaClass(bt.getRealType()).primitiveCategory);
+      PrimitiveTypeEntry pte = PrimitiveObjectInspectorUtils
+          .getTypeEntryFromPrimitiveJavaClass(bt.getRealType());
+      return PrimitiveObjectInspectorFactory.getPrimitiveJavaObjectInspector(pte.primitiveCategory);
     } else {
       // Must be a struct
       DynamicSerDeStructBase btStruct = (DynamicSerDeStructBase) bt;
@@ -194,16 +197,19 @@ public class DynamicSerDe extends AbstractSerDe {
     }
   }
 
+  @Override
   public ObjectInspector getObjectInspector() throws SerDeException {
     return dynamicSerDeStructBaseToObjectInspector(bt);
   }
 
+  @Override
   public Class<? extends Writable> getSerializedClass() {
     return BytesWritable.class;
   }
 
   BytesWritable ret = new BytesWritable();
 
+  @Override
   public Writable serialize(Object obj, ObjectInspector objInspector) throws SerDeException {
     try {
       bos_.reset();
@@ -213,11 +219,12 @@ public class DynamicSerDe extends AbstractSerDe {
       e.printStackTrace();
       throw new SerDeException(e);
     }
-    ret.set(bos_.getData(), 0, bos_.getCount());
+    ret.set(bos_.getData(), 0, bos_.getLength());
     return ret;
   }
 
 
+  @Override
   public SerDeStats getSerDeStats() {
     // no support for statistics
     return null;

@@ -35,11 +35,11 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.QueryPlan;
-import org.apache.hadoop.hive.ql.exec.HadoopJobExecHelper;
-import org.apache.hadoop.hive.ql.exec.HadoopJobExecHook;
 import org.apache.hadoop.hive.ql.exec.Task;
-import org.apache.hadoop.hive.ql.exec.Throttle;
 import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.hadoop.hive.ql.exec.mr.HadoopJobExecHelper;
+import org.apache.hadoop.hive.ql.exec.mr.HadoopJobExecHook;
+import org.apache.hadoop.hive.ql.exec.mr.Throttle;
 import org.apache.hadoop.hive.ql.io.CombineHiveInputFormat;
 import org.apache.hadoop.hive.ql.io.HiveOutputFormatImpl;
 import org.apache.hadoop.hive.ql.plan.api.StageType;
@@ -140,8 +140,8 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
       throw new RuntimeException(e.getMessage());
     }
 
-    String outputPath = this.work.getOutputDir();
-    Path tempOutPath = Utilities.toTempPath(new Path(outputPath));
+    Path outputPath = this.work.getOutputDir();
+    Path tempOutPath = Utilities.toTempPath(outputPath);
     try {
       FileSystem fs = tempOutPath.getFileSystem(job);
       if (!fs.exists(tempOutPath)) {
@@ -152,7 +152,7 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
       return 6;
     }
 
-    RCFileBlockMergeOutputFormat.setMergeOutputPath(job, new Path(outputPath));
+    RCFileBlockMergeOutputFormat.setMergeOutputPath(job, outputPath);
 
     job.setOutputKeyClass(NullWritable.class);
     job.setOutputValueClass(NullWritable.class);
@@ -192,7 +192,7 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
     try {
       addInputPaths(job, work);
 
-      Utilities.setMapRedWork(job, work, ctx.getMRTmpFileURI());
+      Utilities.setMapWork(job, work, ctx.getMRTmpPath(), true);
 
       // remove the pwd from conf file so that job tracker doesn't show this
       // logs
@@ -213,7 +213,7 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
       // Finally SUBMIT the JOB!
       rj = jc.submitJob(job);
 
-      returnVal = jobExecHelper.progress(rj, jc);
+      returnVal = jobExecHelper.progress(rj, jc, null);
       success = (returnVal == 0);
 
     } catch (Exception e) {
@@ -241,7 +241,7 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
           if (returnVal != 0) {
             rj.killJob();
           }
-          HadoopJobExecHelper.runningJobKillURIs.remove(rj.getJobID());
+          HadoopJobExecHelper.runningJobs.remove(rj);
           jobID = rj.getID().toString();
         }
         RCFileMergeMapper.jobClose(outputPath, success, job, console,
@@ -254,8 +254,8 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
   }
 
   private void addInputPaths(JobConf job, MergeWork work) {
-    for (String path : work.getInputPaths()) {
-      FileInputFormat.addInputPath(job, new Path(path));
+    for (Path path : work.getInputPaths()) {
+      FileInputFormat.addInputPath(job, path);
     }
   }
 
@@ -291,7 +291,7 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
       printUsage();
     }
 
-    List<String> inputPaths = new ArrayList<String>();
+    List<Path> inputPaths = new ArrayList<Path>();
     String[] paths = inputPathStr.split(INPUT_SEPERATOR);
     if (paths == null || paths.length == 0) {
       printUsage();
@@ -309,10 +309,10 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
         if (fstatus.isDir()) {
           FileStatus[] fileStatus = fs.listStatus(pathObj);
           for (FileStatus st : fileStatus) {
-            inputPaths.add(st.getPath().toString());
+            inputPaths.add(st.getPath());
           }
         } else {
-          inputPaths.add(fstatus.getPath().toString());
+          inputPaths.add(fstatus.getPath());
         }
       } catch (IOException e) {
         e.printStackTrace(System.err);
@@ -340,7 +340,7 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
       }
     }
 
-    MergeWork mergeWork = new MergeWork(inputPaths, outputDir);
+    MergeWork mergeWork = new MergeWork(inputPaths, new Path(outputDir));
     DriverContext driverCxt = new DriverContext();
     BlockMergeTask taskExec = new BlockMergeTask();
     taskExec.initialize(hiveConf, null, driverCxt);
@@ -373,15 +373,4 @@ public class BlockMergeTask extends Task<MergeWork> implements Serializable,
   public void logPlanProgress(SessionState ss) throws IOException {
     // no op
   }
-
-  @Override
-  public void updateCounters(Counters ctrs, RunningJob rj) throws IOException {
-    // no op
-  }
-
-  @Override
-  protected void localizeMRTmpFilesImpl(Context ctx) {
-    // no op
-  }
-
 }

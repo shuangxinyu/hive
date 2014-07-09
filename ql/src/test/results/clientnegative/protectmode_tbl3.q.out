@@ -8,8 +8,10 @@ drop table tbl_protectmode_4
 POSTHOOK: type: DROPTABLE
 PREHOOK: query: create table tbl_protectmode_4  (col string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table tbl_protectmode_4  (col string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@tbl_protectmode_4
 PREHOOK: query: select col from tbl_protectmode_4
 PREHOOK: type: QUERY
@@ -29,11 +31,11 @@ POSTHOOK: Input: default@tbl_protectmode_4
 POSTHOOK: Output: default@tbl_protectmode_4
 PREHOOK: query: desc extended tbl_protectmode_4
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@tbl_protectmode_4
 POSTHOOK: query: desc extended tbl_protectmode_4
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-col                 	string              	None                
+POSTHOOK: Input: default@tbl_protectmode_4
+col                 	string              	                    
 	 	 
 #### A masked pattern was here ####
 FAILED: SemanticException [Error 10113]: Query against an offline table or partition Table tbl_protectmode_4

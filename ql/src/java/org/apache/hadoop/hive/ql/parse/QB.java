@@ -21,6 +21,7 @@ package org.apache.hadoop.hive.ql.parse;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.logging.Log;
@@ -43,6 +44,7 @@ public class QB {
   private int numSelDi = 0;
   private HashMap<String, String> aliasToTabs;
   private HashMap<String, QBExpr> aliasToSubq;
+  private HashMap<String, Map<String, String>> aliasToProps;
   private List<String> aliases;
   private QBParseInfo qbp;
   private QBMetaData qbm;
@@ -51,6 +53,7 @@ public class QB {
   private boolean isQuery;
   private boolean isAnalyzeRewrite;
   private CreateTableDesc tblDesc = null; // table descriptor of the final
+  private CreateTableDesc localDirectoryDesc = null ;
 
   // used by PTFs
   /*
@@ -61,6 +64,28 @@ public class QB {
    * the WindowingSpec used for windowing clauses in this QB.
    */
   private HashMap<String, WindowingSpec> destToWindowingSpec;
+
+  /*
+   * If this QB represents a SubQuery predicate then this will point to the SubQuery object.
+   */
+  private QBSubQuery subQueryPredicateDef;
+  
+	/*
+	 * used to give a unique name to each SubQuery QB Currently there can be at
+	 * most 2 SubQueries in a Query: 1 in the Where clause, and 1 in the Having
+	 * clause.
+	 */
+	private int numSubQueryPredicates;
+	
+	/*
+	 * for now a top level QB can have 1 where clause SQ predicate.
+	 */
+	private QBSubQuery whereClauseSubQueryPredicate;
+	
+  /*
+   * for now a top level QB can have 1 where clause SQ predicate.
+   */
+	private QBSubQuery havingClauseSubQueryPredicate;
 
   // results
 
@@ -80,6 +105,7 @@ public class QB {
   public QB(String outer_id, String alias, boolean isSubQ) {
     aliasToTabs = new HashMap<String, String>();
     aliasToSubq = new HashMap<String, QBExpr>();
+    aliasToProps = new HashMap<String, Map<String, String>>();
     aliases = new ArrayList<String>();
     if (alias != null) {
       alias = alias.toLowerCase();
@@ -141,6 +167,10 @@ public class QB {
     aliasToSubq.put(alias.toLowerCase(), qbexpr);
   }
 
+  public void setTabProps(String alias, Map<String, String> props) {
+    aliasToProps.put(alias.toLowerCase(), props);
+  }
+
   public void addAlias(String alias) {
     if (!aliases.contains(alias.toLowerCase())) {
       aliases.add(alias.toLowerCase());
@@ -187,11 +217,19 @@ public class QB {
     return aliasToTabs.get(alias.toLowerCase());
   }
 
+  public Map<String, String> getTabPropsForAlias(String alias) {
+    return aliasToProps.get(alias.toLowerCase());
+  }
+
   public void rewriteViewToSubq(String alias, String viewName, QBExpr qbexpr) {
     alias = alias.toLowerCase();
     String tableName = aliasToTabs.remove(alias);
     assert (viewName.equals(tableName));
     aliasToSubq.put(alias, qbexpr);
+  }
+
+  public void rewriteCTEToSubq(String alias, String cteName, QBExpr qbexpr) {
+    rewriteViewToSubq(alias, cteName, qbexpr);
   }
 
   public QBJoinTree getQbJoinTree() {
@@ -225,6 +263,14 @@ public class QB {
 
   public void setTableDesc(CreateTableDesc desc) {
     tblDesc = desc;
+  }
+
+  public CreateTableDesc getLLocalDirectoryDesc() {
+    return localDirectoryDesc;
+  }
+
+  public void setLocalDirectoryDesc(CreateTableDesc localDirectoryDesc) {
+    this.localDirectoryDesc = localDirectoryDesc;
   }
 
   /**
@@ -288,5 +334,36 @@ public class QB {
     return destToWindowingSpec;
   }
 
+  protected void setSubQueryDef(QBSubQuery subQueryPredicateDef) {
+    this.subQueryPredicateDef = subQueryPredicateDef;
+  }
+
+  protected QBSubQuery getSubQueryPredicateDef() {
+    return subQueryPredicateDef;
+  }
+  
+	protected int getNumSubQueryPredicates() {
+		return numSubQueryPredicates;
+	}
+
+	protected int incrNumSubQueryPredicates() {
+		return ++numSubQueryPredicates;
+	}
+	
+	void setWhereClauseSubQueryPredicate(QBSubQuery sq) {
+	  whereClauseSubQueryPredicate = sq;
+  }
+	
+	public QBSubQuery getWhereClauseSubQueryPredicate() {
+	  return whereClauseSubQueryPredicate;
+	}
+	
+	void setHavingClauseSubQueryPredicate(QBSubQuery sq) {
+    havingClauseSubQueryPredicate = sq;
+  }
+	
+	public QBSubQuery getHavingClauseSubQueryPredicate() {
+    return havingClauseSubQueryPredicate;
+  }
 
 }

@@ -1,10 +1,9 @@
 set hive.mapred.supports.subdirectories=true;
-set hive.internal.ddl.list.bucketing.enable=true;
 set hive.optimize.skewjoin.compiletime = true;
 
 CREATE TABLE T1(key STRING, value STRING) STORED AS TEXTFILE;
 
-LOAD DATA LOCAL INPATH '../data/files/T1.txt' INTO TABLE T1;
+LOAD DATA LOCAL INPATH '../../data/files/T1.txt' INTO TABLE T1;
 
 drop table array_valued_T1;
 create table array_valued_T1 (key string, value array<string>) SKEWED BY (key) ON ((8));

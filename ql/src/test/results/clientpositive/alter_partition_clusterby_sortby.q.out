@@ -1,14 +1,16 @@
 PREHOOK: query: create table alter_table_partition_clusterby_sortby (a int, b int) partitioned by (c string) clustered by (a, b) sorted by (a desc, b asc) into 4 buckets
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table alter_table_partition_clusterby_sortby (a int, b int) partitioned by (c string) clustered by (a, b) sorted by (a desc, b asc) into 4 buckets
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@alter_table_partition_clusterby_sortby
 PREHOOK: query: alter table alter_table_partition_clusterby_sortby add partition(c='abc')
 PREHOOK: type: ALTERTABLE_ADDPARTS
-PREHOOK: Input: default@alter_table_partition_clusterby_sortby
+PREHOOK: Output: default@alter_table_partition_clusterby_sortby
 POSTHOOK: query: alter table alter_table_partition_clusterby_sortby add partition(c='abc')
 POSTHOOK: type: ALTERTABLE_ADDPARTS
-POSTHOOK: Input: default@alter_table_partition_clusterby_sortby
+POSTHOOK: Output: default@alter_table_partition_clusterby_sortby
 POSTHOOK: Output: default@alter_table_partition_clusterby_sortby@c=abc
 PREHOOK: query: -- Turn off sorting for a partition
 
@@ -25,17 +27,19 @@ POSTHOOK: Input: default@alter_table_partition_clusterby_sortby@c=abc
 POSTHOOK: Output: default@alter_table_partition_clusterby_sortby@c=abc
 PREHOOK: query: desc formatted alter_table_partition_clusterby_sortby partition(c='abc')
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@alter_table_partition_clusterby_sortby
 POSTHOOK: query: desc formatted alter_table_partition_clusterby_sortby partition(c='abc')
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@alter_table_partition_clusterby_sortby
 # col_name            	data_type           	comment             
 	 	 
-a                   	int                 	None                
-b                   	int                 	None                
+a                   	int                 	                    
+b                   	int                 	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-c                   	string              	None                
+c                   	string              	                    
 	 	 
 # Detailed Partition Information	 	 
 Partition Value:    	[abc]               	 
@@ -45,6 +49,12 @@ Table:              	alter_table_partition_clusterby_sortby
 Protect Mode:       	None                	 
 #### A masked pattern was here ####
 Partition Parameters:	 	 
+	COLUMN_STATS_ACCURATE	false               
+#### A masked pattern was here ####
+	numFiles            	0                   
+	numRows             	-1                  
+	rawDataSize         	-1                  
+	totalSize           	0                   
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -72,17 +82,19 @@ POSTHOOK: Input: default@alter_table_partition_clusterby_sortby@c=abc
 POSTHOOK: Output: default@alter_table_partition_clusterby_sortby@c=abc
 PREHOOK: query: desc formatted alter_table_partition_clusterby_sortby partition(c='abc')
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@alter_table_partition_clusterby_sortby
 POSTHOOK: query: desc formatted alter_table_partition_clusterby_sortby partition(c='abc')
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@alter_table_partition_clusterby_sortby
 # col_name            	data_type           	comment             
 	 	 
-a                   	int                 	None                
-b                   	int                 	None                
+a                   	int                 	                    
+b                   	int                 	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-c                   	string              	None                
+c                   	string              	                    
 	 	 
 # Detailed Partition Information	 	 
 Partition Value:    	[abc]               	 
@@ -92,6 +104,12 @@ Table:              	alter_table_partition_clusterby_sortby
 Protect Mode:       	None                	 
 #### A masked pattern was here ####
 Partition Parameters:	 	 
+	COLUMN_STATS_ACCURATE	false               
+#### A masked pattern was here ####
+	numFiles            	0                   
+	numRows             	-1                  
+	rawDataSize         	-1                  
+	totalSize           	0                   
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -119,17 +137,19 @@ POSTHOOK: Input: default@alter_table_partition_clusterby_sortby@c=abc
 POSTHOOK: Output: default@alter_table_partition_clusterby_sortby@c=abc
 PREHOOK: query: desc formatted alter_table_partition_clusterby_sortby partition(c='abc')
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@alter_table_partition_clusterby_sortby
 POSTHOOK: query: desc formatted alter_table_partition_clusterby_sortby partition(c='abc')
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@alter_table_partition_clusterby_sortby
 # col_name            	data_type           	comment             
 	 	 
-a                   	int                 	None                
-b                   	int                 	None                
+a                   	int                 	                    
+b                   	int                 	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-c                   	string              	None                
+c                   	string              	                    
 	 	 
 # Detailed Partition Information	 	 
 Partition Value:    	[abc]               	 
@@ -139,6 +159,12 @@ Table:              	alter_table_partition_clusterby_sortby
 Protect Mode:       	None                	 
 #### A masked pattern was here ####
 Partition Parameters:	 	 
+	COLUMN_STATS_ACCURATE	false               
+#### A masked pattern was here ####
+	numFiles            	0                   
+	numRows             	-1                  
+	rawDataSize         	-1                  
+	totalSize           	0                   
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -155,19 +181,21 @@ PREHOOK: query: -- Table properties should be unchanged
 
 desc formatted alter_table_partition_clusterby_sortby
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@alter_table_partition_clusterby_sortby
 POSTHOOK: query: -- Table properties should be unchanged
 
 desc formatted alter_table_partition_clusterby_sortby
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@alter_table_partition_clusterby_sortby
 # col_name            	data_type           	comment             
 	 	 
-a                   	int                 	None                
-b                   	int                 	None                
+a                   	int                 	                    
+b                   	int                 	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-c                   	string              	None                
+c                   	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 

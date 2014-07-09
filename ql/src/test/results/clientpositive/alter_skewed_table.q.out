@@ -1,16 +1,20 @@
 PREHOOK: query: create table original (key STRING, value STRING)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table original (key STRING, value STRING)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@original
 PREHOOK: query: describe formatted original
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@original
 POSTHOOK: query: describe formatted original
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@original
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
+key                 	string              	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -42,12 +46,14 @@ POSTHOOK: Input: default@original
 POSTHOOK: Output: default@original
 PREHOOK: query: describe formatted original
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@original
 POSTHOOK: query: describe formatted original
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@original
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
+key                 	string              	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -57,6 +63,12 @@ Retention:          	0
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
 Table Parameters:	 	 
+	COLUMN_STATS_ACCURATE	false               
+#### A masked pattern was here ####
+	numFiles            	0                   
+	numRows             	-1                  
+	rawDataSize         	-1                  
+	totalSize           	0                   
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -81,17 +93,21 @@ POSTHOOK: Input: default@original
 POSTHOOK: Output: default@original
 PREHOOK: query: create table original2 (key STRING, value STRING)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table original2 (key STRING, value STRING)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@original2
 PREHOOK: query: describe formatted original2
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@original2
 POSTHOOK: query: describe formatted original2
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@original2
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
+key                 	string              	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -123,12 +139,14 @@ POSTHOOK: Input: default@original2
 POSTHOOK: Output: default@original2
 PREHOOK: query: describe formatted original2
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@original2
 POSTHOOK: query: describe formatted original2
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@original2
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
+key                 	string              	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -138,6 +156,12 @@ Retention:          	0
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
 Table Parameters:	 	 
+	COLUMN_STATS_ACCURATE	false               
+#### A masked pattern was here ####
+	numFiles            	0                   
+	numRows             	-1                  
+	rawDataSize         	-1                  
+	totalSize           	0                   
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -162,17 +186,21 @@ POSTHOOK: Input: default@original2
 POSTHOOK: Output: default@original2
 PREHOOK: query: create table original3 (key STRING, value STRING) SKEWED BY (key, value) ON ((1,1),(5,6))
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table original3 (key STRING, value STRING) SKEWED BY (key, value) ON ((1,1),(5,6))
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@original3
 PREHOOK: query: describe formatted original3
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@original3
 POSTHOOK: query: describe formatted original3
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@original3
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
+key                 	string              	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -206,12 +234,14 @@ POSTHOOK: Input: default@original3
 POSTHOOK: Output: default@original3
 PREHOOK: query: describe formatted original3
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@original3
 POSTHOOK: query: describe formatted original3
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@original3
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
+key                 	string              	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -221,6 +251,12 @@ Retention:          	0
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
 Table Parameters:	 	 
+	COLUMN_STATS_ACCURATE	false               
+#### A masked pattern was here ####
+	numFiles            	0                   
+	numRows             	-1                  
+	rawDataSize         	-1                  
+	totalSize           	0                   
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 

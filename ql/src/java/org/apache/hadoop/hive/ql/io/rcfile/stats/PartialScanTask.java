@@ -36,14 +36,15 @@ import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.ErrorMsg;
 import org.apache.hadoop.hive.ql.QueryPlan;
-import org.apache.hadoop.hive.ql.exec.HadoopJobExecHelper;
-import org.apache.hadoop.hive.ql.exec.HadoopJobExecHook;
 import org.apache.hadoop.hive.ql.exec.Task;
-import org.apache.hadoop.hive.ql.exec.Throttle;
 import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.hadoop.hive.ql.exec.mr.HadoopJobExecHelper;
+import org.apache.hadoop.hive.ql.exec.mr.HadoopJobExecHook;
+import org.apache.hadoop.hive.ql.exec.mr.Throttle;
 import org.apache.hadoop.hive.ql.io.CombineHiveInputFormat;
 import org.apache.hadoop.hive.ql.io.HiveOutputFormatImpl;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
+import org.apache.hadoop.hive.ql.plan.MapredWork;
 import org.apache.hadoop.hive.ql.plan.api.StageType;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
@@ -181,7 +182,9 @@ public class PartialScanTask extends Task<PartialScanWork> implements
     try {
       addInputPaths(job, work);
 
-      Utilities.setMapRedWork(job, work, ctx.getMRTmpFileURI());
+      MapredWork mrWork = new MapredWork();
+      mrWork.setMapWork(work);
+      Utilities.setMapRedWork(job, mrWork, ctx.getMRTmpPath());
 
       // remove the pwd from conf file so that job tracker doesn't show this
       // logs
@@ -202,9 +205,9 @@ public class PartialScanTask extends Task<PartialScanWork> implements
       if (work.isGatheringStats()) {
         // initialize stats publishing table
         StatsPublisher statsPublisher;
-        String statsImplementationClass = HiveConf.getVar(job, HiveConf.ConfVars.HIVESTATSDBCLASS);
-        if (StatsFactory.setImplementation(statsImplementationClass, job)) {
-          statsPublisher = StatsFactory.getStatsPublisher();
+        StatsFactory factory = StatsFactory.newFactory(job);
+        if (factory != null) {
+          statsPublisher = factory.getStatsPublisher();
           if (!statsPublisher.init(job)) { // creating stats table if not exists
             if (HiveConf.getBoolVar(job, HiveConf.ConfVars.HIVE_STATS_RELIABLE)) {
               throw
@@ -217,7 +220,7 @@ public class PartialScanTask extends Task<PartialScanWork> implements
       // Finally SUBMIT the JOB!
       rj = jc.submitJob(job);
 
-      returnVal = jobExecHelper.progress(rj, jc);
+      returnVal = jobExecHelper.progress(rj, jc, null);
       success = (returnVal == 0);
 
     } catch (Exception e) {
@@ -245,7 +248,7 @@ public class PartialScanTask extends Task<PartialScanWork> implements
           if (returnVal != 0) {
             rj.killJob();
           }
-          HadoopJobExecHelper.runningJobKillURIs.remove(rj.getJobID());
+          HadoopJobExecHelper.runningJobs.remove(rj);
           jobID = rj.getID().toString();
         }
       } catch (Exception e) {
@@ -256,8 +259,8 @@ public class PartialScanTask extends Task<PartialScanWork> implements
   }
 
   private void addInputPaths(JobConf job, PartialScanWork work) {
-    for (String path : work.getInputPaths()) {
-      FileInputFormat.addInputPath(job, new Path(path));
+    for (Path path : work.getInputPaths()) {
+      FileInputFormat.addInputPath(job, path);
     }
   }
 
@@ -293,7 +296,7 @@ public class PartialScanTask extends Task<PartialScanWork> implements
       printUsage();
     }
 
-    List<String> inputPaths = new ArrayList<String>();
+    List<Path> inputPaths = new ArrayList<Path>();
     String[] paths = inputPathStr.split(INPUT_SEPERATOR);
     if (paths == null || paths.length == 0) {
       printUsage();
@@ -311,10 +314,10 @@ public class PartialScanTask extends Task<PartialScanWork> implements
         if (fstatus.isDir()) {
           FileStatus[] fileStatus = fs.listStatus(pathObj);
           for (FileStatus st : fileStatus) {
-            inputPaths.add(st.getPath().toString());
+            inputPaths.add(st.getPath());
           }
         } else {
-          inputPaths.add(fstatus.getPath().toString());
+          inputPaths.add(fstatus.getPath());
         }
       } catch (IOException e) {
         e.printStackTrace(System.err);
@@ -374,16 +377,4 @@ public class PartialScanTask extends Task<PartialScanWork> implements
   public void logPlanProgress(SessionState ss) throws IOException {
     // no op
   }
-
-  @Override
-  public void updateCounters(Counters ctrs, RunningJob rj) throws IOException {
-    // no op
-  }
-
-  @Override
-  protected void localizeMRTmpFilesImpl(Context ctx) {
-    // no op
-  }
-
-
 }

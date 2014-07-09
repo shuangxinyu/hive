@@ -30,7 +30,13 @@ import org.apache.hadoop.fs.Path;
 @Explain(displayName = "File Output Operator")
 public class FileSinkDesc extends AbstractOperatorDesc {
   private static final long serialVersionUID = 1L;
-  private String dirName;
+
+  public enum DPSortState {
+    NONE, PARTITION_SORTED, PARTITION_BUCKET_SORTED
+  }
+
+  private DPSortState dpSortState;
+  private Path dirName;
   // normally statsKeyPref will be the same as dirName, but the latter
   // could be changed in local execution optimization
   private String statsKeyPref;
@@ -50,6 +56,16 @@ public class FileSinkDesc extends AbstractOperatorDesc {
   private String staticSpec; // static partition spec ends with a '/'
   private boolean gatherStats;
 
+  // Consider a query like:
+  // insert overwrite table T3 select ... from T1 join T2 on T1.key = T2.key;
+  // where T1, T2 and T3 are sorted and bucketed by key into the same number of buckets,
+  // We dont need a reducer to enforce bucketing and sorting for T3.
+  // The field below captures the fact that the reducer introduced to enforce sorting/
+  // bucketing of T3 has been removed.
+  // In this case, a sort-merge join is needed, and so the sort-merge join between T1 and T2
+  // cannot be performed as a map-only job
+  private transient boolean removedReduceSinkBucketSort;
+
   // This file descriptor is linked to other file descriptors.
   // One use case is that, a union->select (star)->file sink, is broken down.
   // For eg: consider a query like:
@@ -59,7 +75,7 @@ public class FileSinkDesc extends AbstractOperatorDesc {
   // the sub-queries write to sub-directories of a common directory. So, the file sink
   // descriptors for subq1 and subq2 are linked.
   private boolean linkedFileSink = false;
-  private String parentDir;
+  private Path parentDir;
   transient private List<FileSinkDesc> linkedFileSinkDesc;
 
   private boolean statsReliable;
@@ -71,7 +87,7 @@ public class FileSinkDesc extends AbstractOperatorDesc {
   public FileSinkDesc() {
   }
 
-  public FileSinkDesc(final String dirName, final TableDesc tableInfo,
+  public FileSinkDesc(final Path dirName, final TableDesc tableInfo,
       final boolean compressed, final int destTableId, final boolean multiFileSpray,
       final boolean canBeMerged, final int numFiles, final int totalFiles,
       final ArrayList<ExprNodeDesc> partitionCols, final DynamicPartitionCtx dpCtx) {
@@ -86,9 +102,10 @@ public class FileSinkDesc extends AbstractOperatorDesc {
     this.totalFiles = totalFiles;
     this.partitionCols = partitionCols;
     this.dpCtx = dpCtx;
+    this.dpSortState = DPSortState.NONE;
   }
 
-  public FileSinkDesc(final String dirName, final TableDesc tableInfo,
+  public FileSinkDesc(final Path dirName, final TableDesc tableInfo,
       final boolean compressed) {
 
     this.dirName = dirName;
@@ -100,6 +117,7 @@ public class FileSinkDesc extends AbstractOperatorDesc {
     this.numFiles = 1;
     this.totalFiles = 1;
     this.partitionCols = null;
+    this.dpSortState = DPSortState.NONE;
   }
 
   @Override
@@ -118,19 +136,20 @@ public class FileSinkDesc extends AbstractOperatorDesc {
     ret.setStatsReliable(statsReliable);
     ret.setMaxStatsKeyPrefixLength(maxStatsKeyPrefixLength);
     ret.setStatsCollectRawDataSize(statsCollectRawDataSize);
+    ret.setDpSortState(dpSortState);
     return (Object) ret;
   }
 
   @Explain(displayName = "directory", normalExplain = false)
-  public String getDirName() {
+  public Path getDirName() {
     return dirName;
   }
 
-  public void setDirName(final String dirName) {
+  public void setDirName(final Path dirName) {
     this.dirName = dirName;
   }
 
-  public String getFinalDirName() {
+  public Path getFinalDirName() {
     return linkedFileSink ? parentDir : dirName;
   }
 
@@ -152,7 +171,7 @@ public class FileSinkDesc extends AbstractOperatorDesc {
     this.compressed = compressed;
   }
 
-  @Explain(displayName = "GlobalTableId")
+  @Explain(displayName = "GlobalTableId", normalExplain = false)
   public int getDestTableId() {
     return destTableId;
   }
@@ -310,11 +329,11 @@ public class FileSinkDesc extends AbstractOperatorDesc {
     this.linkedFileSink = linkedFileSink;
   }
 
-  public String getParentDir() {
+  public Path getParentDir() {
     return parentDir;
   }
 
-  public void setParentDir(String parentDir) {
+  public void setParentDir(Path parentDir) {
     this.parentDir = parentDir;
   }
 
@@ -364,4 +383,19 @@ public class FileSinkDesc extends AbstractOperatorDesc {
     this.statsCollectRawDataSize = statsCollectRawDataSize;
   }
 
+  public boolean isRemovedReduceSinkBucketSort() {
+    return removedReduceSinkBucketSort;
+  }
+
+  public void setRemovedReduceSinkBucketSort(boolean removedReduceSinkBucketSort) {
+    this.removedReduceSinkBucketSort = removedReduceSinkBucketSort;
+  }
+
+  public DPSortState getDpSortState() {
+    return dpSortState;
+  }
+
+  public void setDpSortState(DPSortState dpSortState) {
+    this.dpSortState = dpSortState;
+  }
 }

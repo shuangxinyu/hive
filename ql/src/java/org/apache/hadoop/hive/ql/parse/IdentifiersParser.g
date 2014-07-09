@@ -47,8 +47,8 @@ catch (RecognitionException e) {
 
 // group by a,b
 groupByClause
-@init { gParent.msgs.push("group by clause"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("group by clause", state); }
+@after { gParent.popMsg(state); }
     :
     KW_GROUP KW_BY
     groupByExpression
@@ -63,8 +63,8 @@ groupByClause
     ;
 
 groupingSetExpression
-@init {gParent.msgs.push("grouping set expression"); }
-@after {gParent.msgs.pop(); }
+@init {gParent.pushMsg("grouping set expression", state); }
+@after {gParent.popMsg(state); }
    :
    groupByExpression
    -> ^(TOK_GROUPING_SETS_EXPRESSION groupByExpression)
@@ -81,43 +81,37 @@ groupingSetExpression
 
 
 groupByExpression
-@init { gParent.msgs.push("group by expression"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("group by expression", state); }
+@after { gParent.popMsg(state); }
     :
     expression
     ;
 
 havingClause
-@init { gParent.msgs.push("having clause"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("having clause", state); }
+@after { gParent.popMsg(state); }
     :
     KW_HAVING havingCondition -> ^(TOK_HAVING havingCondition)
     ;
 
 havingCondition
-@init { gParent.msgs.push("having condition"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("having condition", state); }
+@after { gParent.popMsg(state); }
     :
     expression
     ;
 
 // order by a,b
 orderByClause
-@init { gParent.msgs.push("order by clause"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("order by clause", state); }
+@after { gParent.popMsg(state); }
     :
-    KW_ORDER KW_BY
-    LPAREN columnRefOrder
-    ( COMMA columnRefOrder)* RPAREN -> ^(TOK_ORDERBY columnRefOrder+)
-    |
-    KW_ORDER KW_BY
-    columnRefOrder
-    ( COMMA columnRefOrder)* -> ^(TOK_ORDERBY columnRefOrder+)
+    KW_ORDER KW_BY columnRefOrder ( COMMA columnRefOrder)* -> ^(TOK_ORDERBY columnRefOrder+)
     ;
 
 clusterByClause
-@init { gParent.msgs.push("cluster by clause"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("cluster by clause", state); }
+@after { gParent.popMsg(state); }
     :
     KW_CLUSTER KW_BY
     LPAREN expression (COMMA expression)* RPAREN -> ^(TOK_CLUSTERBY expression+)
@@ -128,8 +122,8 @@ clusterByClause
     ;
 
 partitionByClause
-@init  { gParent.msgs.push("partition by clause"); }
-@after { gParent.msgs.pop(); }
+@init  { gParent.pushMsg("partition by clause", state); }
+@after { gParent.popMsg(state); }
     :
     KW_PARTITION KW_BY
     LPAREN expression (COMMA expression)* RPAREN -> ^(TOK_DISTRIBUTEBY expression+)
@@ -139,8 +133,8 @@ partitionByClause
     ;
 
 distributeByClause
-@init { gParent.msgs.push("distribute by clause"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("distribute by clause", state); }
+@after { gParent.popMsg(state); }
     :
     KW_DISTRIBUTE KW_BY
     LPAREN expression (COMMA expression)* RPAREN -> ^(TOK_DISTRIBUTEBY expression+)
@@ -150,8 +144,8 @@ distributeByClause
     ;
 
 sortByClause
-@init { gParent.msgs.push("sort by clause"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("sort by clause", state); }
+@after { gParent.popMsg(state); }
     :
     KW_SORT KW_BY
     LPAREN columnRefOrder
@@ -164,8 +158,8 @@ sortByClause
 
 // fun(par1, par2, par3)
 function
-@init { gParent.msgs.push("function specification"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("function specification", state); }
+@after { gParent.popMsg(state); }
     :
     functionName
     LPAREN
@@ -173,21 +167,22 @@ function
         (star=STAR)
         | (dist=KW_DISTINCT)? (selectExpression (COMMA selectExpression)*)?
       )
-    RPAREN -> {$star != null}? ^(TOK_FUNCTIONSTAR functionName)
-           -> {$dist == null}? ^(TOK_FUNCTION functionName (selectExpression+)?)
+    RPAREN (KW_OVER ws=window_specification)?
+           -> {$star != null}? ^(TOK_FUNCTIONSTAR functionName $ws?)
+           -> {$dist == null}? ^(TOK_FUNCTION functionName (selectExpression+)? $ws?)
                             -> ^(TOK_FUNCTIONDI functionName (selectExpression+)?)
     ;
 
 functionName
-@init { gParent.msgs.push("function name"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("function name", state); }
+@after { gParent.popMsg(state); }
     : // Keyword IF is also a function name
-    KW_IF | KW_ARRAY | KW_MAP | KW_STRUCT | KW_UNIONTYPE | identifier
+    KW_IF | KW_ARRAY | KW_MAP | KW_STRUCT | KW_UNIONTYPE | functionIdentifier
     ;
 
 castExpression
-@init { gParent.msgs.push("cast expression"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("cast expression", state); }
+@after { gParent.popMsg(state); }
     :
     KW_CAST
     LPAREN
@@ -198,8 +193,8 @@ castExpression
     ;
 
 caseExpression
-@init { gParent.msgs.push("case expression"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("case expression", state); }
+@after { gParent.popMsg(state); }
     :
     KW_CASE expression
     (KW_WHEN expression KW_THEN expression)+
@@ -208,8 +203,8 @@ caseExpression
     ;
 
 whenExpression
-@init { gParent.msgs.push("case expression"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("case expression", state); }
+@after { gParent.popMsg(state); }
     :
     KW_CASE
      ( KW_WHEN expression KW_THEN expression)+
@@ -218,10 +213,11 @@ whenExpression
     ;
 
 constant
-@init { gParent.msgs.push("constant"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("constant", state); }
+@after { gParent.popMsg(state); }
     :
     Number
+    | dateLiteral
     | StringLiteral
     | stringLiteralSequence
     | BigintLiteral
@@ -238,15 +234,25 @@ stringLiteralSequence
     ;
 
 charSetStringLiteral
-@init { gParent.msgs.push("character string literal"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("character string literal", state); }
+@after { gParent.popMsg(state); }
     :
     csName=CharSetName csLiteral=CharSetLiteral -> ^(TOK_CHARSETLITERAL $csName $csLiteral)
     ;
 
+dateLiteral
+    :
+    KW_DATE StringLiteral ->
+    {
+      // Create DateLiteral token, but with the text of the string value
+      // This makes the dateLiteral more consistent with the other type literals.
+      adaptor.create(TOK_DATELITERAL, $StringLiteral.text)
+    }
+    ;
+
 expression
-@init { gParent.msgs.push("expression specification"); }
-@after { gParent.msgs.pop(); }
+@init { gParent.pushMsg("expression specification", state); }
+@after { gParent.popMsg(state); }
     :
     precedenceOrExpression
     ;
@@ -254,11 +260,12 @@ expression
 atomExpression
     :
     KW_NULL -> TOK_NULL
+    | dateLiteral
     | constant
-    | function
     | castExpression
     | caseExpression
     | whenExpression
+    | (functionName LPAREN) => function
     | tableOrColumn
     | LPAREN! expression RPAREN!
     ;
@@ -358,6 +365,11 @@ precedenceEqualOperator
     precedenceEqualNegatableOperator | EQUAL | EQUAL_NS | NOTEQUAL | LESSTHANOREQUALTO | LESSTHAN | GREATERTHANOREQUALTO | GREATERTHAN
     ;
 
+subQueryExpression 
+    : 
+    LPAREN! selectStatement[true] RPAREN!     
+ ;
+ 
 precedenceEqualExpression
     :
     (left=precedenceBitwiseOrExpression -> $left)
@@ -366,8 +378,12 @@ precedenceEqualExpression
        -> ^(KW_NOT ^(precedenceEqualNegatableOperator $precedenceEqualExpression $notExpr))
     | (precedenceEqualOperator equalExpr=precedenceBitwiseOrExpression)
        -> ^(precedenceEqualOperator $precedenceEqualExpression $equalExpr)
+    | (KW_NOT KW_IN LPAREN KW_SELECT)=>  (KW_NOT KW_IN subQueryExpression) 
+       -> ^(KW_NOT ^(TOK_SUBQUERY_EXPR ^(TOK_SUBQUERY_OP KW_IN) subQueryExpression $precedenceEqualExpression))
     | (KW_NOT KW_IN expressions)
        -> ^(KW_NOT ^(TOK_FUNCTION KW_IN $precedenceEqualExpression expressions))
+    | (KW_IN LPAREN KW_SELECT)=>  (KW_IN subQueryExpression) 
+       -> ^(TOK_SUBQUERY_EXPR ^(TOK_SUBQUERY_OP KW_IN) subQueryExpression $precedenceEqualExpression)
     | (KW_IN expressions)
        -> ^(TOK_FUNCTION KW_IN $precedenceEqualExpression expressions)
     | ( KW_NOT KW_BETWEEN (min=precedenceBitwiseOrExpression) KW_AND (max=precedenceBitwiseOrExpression) )
@@ -375,6 +391,7 @@ precedenceEqualExpression
     | ( KW_BETWEEN (min=precedenceBitwiseOrExpression) KW_AND (max=precedenceBitwiseOrExpression) )
        -> ^(TOK_FUNCTION Identifier["between"] KW_FALSE $left $min $max)
     )*
+    | (KW_EXISTS LPAREN KW_SELECT)=> (KW_EXISTS subQueryExpression) -> ^(TOK_SUBQUERY_EXPR ^(TOK_SUBQUERY_OP KW_EXISTS) subQueryExpression)
     ;
 
 expressions
@@ -501,7 +518,7 @@ descFuncNames
     :
       sysFuncNames
     | StringLiteral
-    | identifier
+    | functionIdentifier
     ;
 
 identifier
@@ -509,8 +526,17 @@ identifier
     Identifier
     | nonReserved -> Identifier[$nonReserved.text]
     ;
-    
+
+functionIdentifier
+@init { gParent.pushMsg("function identifier", state); }
+@after { gParent.popMsg(state); }
+    : db=identifier DOT fn=identifier
+    -> Identifier[$db.text + "." + $fn.text]
+    |
+    identifier
+    ;
+
 nonReserved
     :
-    KW_TRUE | KW_FALSE | KW_LIKE | KW_EXISTS | KW_ASC | KW_DESC | KW_ORDER | KW_GROUP | KW_BY | KW_AS | KW_INSERT | KW_OVERWRITE | KW_OUTER | KW_LEFT | KW_RIGHT | KW_FULL | KW_PARTITION | KW_PARTITIONS | KW_TABLE | KW_TABLES | KW_COLUMNS | KW_INDEX | KW_INDEXES | KW_REBUILD | KW_FUNCTIONS | KW_SHOW | KW_MSCK | KW_REPAIR | KW_DIRECTORY | KW_LOCAL | KW_USING | KW_CLUSTER | KW_DISTRIBUTE | KW_SORT | KW_UNION | KW_LOAD | KW_EXPORT | KW_IMPORT | KW_DATA | KW_INPATH | KW_IS | KW_NULL | KW_CREATE | KW_EXTERNAL | KW_ALTER | KW_CHANGE | KW_FIRST | KW_AFTER | KW_DESCRIBE | KW_DROP | KW_RENAME | KW_IGNORE | KW_PROTECTION | KW_TO | KW_COMMENT | KW_BOOLEAN | KW_TINYINT | KW_SMALLINT | KW_INT | KW_BIGINT | KW_FLOAT | KW_DOUBLE | KW_DATE | KW_DATETIME | KW_TIMESTAMP | KW_DECIMAL | KW_STRING | KW_ARRAY | KW_STRUCT | KW_UNIONTYPE | KW_PARTITIONED | KW_CLUSTERED | KW_SORTED | KW_INTO | KW_BUCKETS | KW_ROW | KW_ROWS | KW_FORMAT | KW_DELIMITED | KW_FIELDS | KW_TERMINATED | KW_ESCAPED | KW_COLLECTION | KW_ITEMS | KW_KEYS | KW_KEY_TYPE | KW_LINES | KW_STORED | KW_FILEFORMAT | KW_SEQUENCEFILE | KW_TEXTFILE | KW_RCFILE | KW_ORCFILE | KW_INPUTFORMAT | KW_OUTPUTFORMAT | KW_INPUTDRIVER | KW_OUTPUTDRIVER | KW_OFFLINE | KW_ENABLE | KW_DISABLE | KW_READONLY | KW_NO_DROP | KW_LOCATION | KW_BUCKET | KW_OUT | KW_OF | KW_PERCENT | KW_ADD | KW_REPLACE | KW_RLIKE | KW_REGEXP | KW_TEMPORARY | KW_EXPLAIN | KW_FORMATTED | KW_PRETTY | KW_DEPENDENCY | KW_SERDE | KW_WITH | KW_DEFERRED | KW_SERDEPROPERTIES | KW_DBPROPERTIES | KW_LIMIT | KW_SET | KW_UNSET | KW_TBLPROPERTIES | KW_IDXPROPERTIES | KW_VALUE_TYPE | KW_ELEM_TYPE | KW_MAPJOIN | KW_STREAMTABLE | KW_HOLD_DDLTIME | KW_CLUSTERSTATUS | KW_UTC | KW_UTCTIMESTAMP | KW_LONG | KW_DELETE | KW_PLUS | KW_MINUS | KW_FETCH | KW_INTERSECT | KW_VIEW | KW_IN | KW_DATABASES | KW_MATERIALIZED | KW_SCHEMA | KW_SCHEMAS | KW_GRANT | KW_REVOKE | KW_SSL | KW_UNDO | KW_LOCK | KW_LOCKS | KW_UNLOCK | KW_SHARED | KW_EXCLUSIVE | KW_PROCEDURE | KW_UNSIGNED | KW_WHILE | KW_READ | KW_READS | KW_PURGE | KW_RANGE | KW_ANALYZE | KW_BEFORE | KW_BETWEEN | KW_BOTH | KW_BINARY | KW_CONTINUE | KW_CURSOR | KW_TRIGGER | KW_RECORDREADER | KW_RECORDWRITER | KW_SEMI | KW_LATERAL | KW_TOUCH | KW_ARCHIVE | KW_UNARCHIVE | KW_COMPUTE | KW_STATISTICS | KW_USE | KW_OPTION | KW_CONCATENATE | KW_SHOW_DATABASE | KW_UPDATE | KW_RESTRICT | KW_CASCADE | KW_SKEWED | KW_ROLLUP | KW_CUBE | KW_DIRECTORIES | KW_FOR | KW_GROUPING | KW_SETS | KW_TRUNCATE | KW_NOSCAN | KW_USER | KW_ROLE | KW_INNER
+    KW_TRUE | KW_FALSE | KW_LIKE | KW_EXISTS | KW_ASC | KW_DESC | KW_ORDER | KW_GROUP | KW_BY | KW_AS | KW_INSERT | KW_OVERWRITE | KW_OUTER | KW_LEFT | KW_RIGHT | KW_FULL | KW_PARTITION | KW_PARTITIONS | KW_TABLE | KW_TABLES | KW_COLUMNS | KW_INDEX | KW_INDEXES | KW_REBUILD | KW_FUNCTIONS | KW_SHOW | KW_MSCK | KW_REPAIR | KW_DIRECTORY | KW_LOCAL | KW_USING | KW_CLUSTER | KW_DISTRIBUTE | KW_SORT | KW_UNION | KW_LOAD | KW_EXPORT | KW_IMPORT | KW_DATA | KW_INPATH | KW_IS | KW_NULL | KW_CREATE | KW_EXTERNAL | KW_ALTER | KW_CHANGE | KW_FIRST | KW_AFTER | KW_DESCRIBE | KW_DROP | KW_RENAME | KW_IGNORE | KW_PROTECTION | KW_TO | KW_COMMENT | KW_BOOLEAN | KW_TINYINT | KW_SMALLINT | KW_INT | KW_BIGINT | KW_FLOAT | KW_DOUBLE | KW_DATE | KW_DATETIME | KW_TIMESTAMP | KW_DECIMAL | KW_STRING | KW_ARRAY | KW_STRUCT | KW_UNIONTYPE | KW_PARTITIONED | KW_CLUSTERED | KW_SORTED | KW_INTO | KW_BUCKETS | KW_ROW | KW_ROWS | KW_FORMAT | KW_DELIMITED | KW_FIELDS | KW_TERMINATED | KW_ESCAPED | KW_COLLECTION | KW_ITEMS | KW_KEYS | KW_KEY_TYPE | KW_LINES | KW_STORED | KW_FILEFORMAT | KW_SEQUENCEFILE | KW_TEXTFILE | KW_RCFILE | KW_ORCFILE | KW_PARQUETFILE | KW_INPUTFORMAT | KW_OUTPUTFORMAT | KW_INPUTDRIVER | KW_OUTPUTDRIVER | KW_OFFLINE | KW_ENABLE | KW_DISABLE | KW_READONLY | KW_NO_DROP | KW_LOCATION | KW_BUCKET | KW_OUT | KW_OF | KW_PERCENT | KW_ADD | KW_REPLACE | KW_RLIKE | KW_REGEXP | KW_TEMPORARY | KW_EXPLAIN | KW_FORMATTED | KW_PRETTY | KW_DEPENDENCY | KW_LOGICAL | KW_SERDE | KW_WITH | KW_DEFERRED | KW_SERDEPROPERTIES | KW_DBPROPERTIES | KW_LIMIT | KW_SET | KW_UNSET | KW_TBLPROPERTIES | KW_IDXPROPERTIES | KW_VALUE_TYPE | KW_ELEM_TYPE | KW_MAPJOIN | KW_STREAMTABLE | KW_HOLD_DDLTIME | KW_CLUSTERSTATUS | KW_UTC | KW_UTCTIMESTAMP | KW_LONG | KW_DELETE | KW_PLUS | KW_MINUS | KW_FETCH | KW_INTERSECT | KW_VIEW | KW_IN | KW_DATABASES | KW_MATERIALIZED | KW_SCHEMA | KW_SCHEMAS | KW_GRANT | KW_REVOKE | KW_SSL | KW_UNDO | KW_LOCK | KW_LOCKS | KW_UNLOCK | KW_SHARED | KW_EXCLUSIVE | KW_PROCEDURE | KW_UNSIGNED | KW_WHILE | KW_READ | KW_READS | KW_PURGE | KW_RANGE | KW_ANALYZE | KW_BEFORE | KW_BETWEEN | KW_BOTH | KW_BINARY | KW_CONTINUE | KW_CURSOR | KW_TRIGGER | KW_RECORDREADER | KW_RECORDWRITER | KW_SEMI | KW_LATERAL | KW_TOUCH | KW_ARCHIVE | KW_UNARCHIVE | KW_COMPUTE | KW_STATISTICS | KW_USE | KW_OPTION | KW_CONCATENATE | KW_SHOW_DATABASE | KW_UPDATE | KW_RESTRICT | KW_CASCADE | KW_SKEWED | KW_ROLLUP | KW_CUBE | KW_DIRECTORIES | KW_FOR | KW_GROUPING | KW_SETS | KW_TRUNCATE | KW_NOSCAN | KW_USER | KW_ROLE | KW_ROLES | KW_INNER | KW_DEFINED | KW_ADMIN | KW_JAR | KW_FILE | KW_OWNER | KW_PRINCIPALS | KW_ALL | KW_DEFAULT | KW_NONE | KW_COMPACT | KW_COMPACTIONS | KW_TRANSACTIONS | KW_REWRITE | KW_AUTHORIZATION
     ;

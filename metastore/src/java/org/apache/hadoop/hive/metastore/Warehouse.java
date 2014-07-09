@@ -23,6 +23,7 @@ import static org.apache.hadoop.hive.metastore.MetaStoreUtils.DEFAULT_DATABASE_N
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,16 +39,20 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.ContentSummary;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.hive.common.FileUtils;
+import org.apache.hadoop.hive.common.HiveStatsUtils;
 import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
+import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.ReflectionUtils;
@@ -64,7 +69,6 @@ public class Warehouse {
 
   private MetaStoreFS fsHandler = null;
   private boolean storageAuthCheck = false;
-  private boolean inheritPerms = false;
 
   public Warehouse(Configuration conf) throws MetaException {
     this.conf = conf;
@@ -76,8 +80,6 @@ public class Warehouse {
     fsHandler = getMetaStoreFsHandler(conf);
     storageAuthCheck = HiveConf.getBoolVar(conf,
         HiveConf.ConfVars.METASTORE_AUTHORIZATION_STORAGE_AUTH_CHECKS);
-    inheritPerms = HiveConf.getBoolVar(conf,
-        HiveConf.ConfVars.HIVE_WAREHOUSE_SUBDIR_INHERIT_PERMS);
   }
 
   private MetaStoreFS getMetaStoreFsHandler(Configuration conf)
@@ -178,25 +180,13 @@ public class Warehouse {
     return getDnsPath(new Path(getDatabasePath(db), tableName.toLowerCase()));
   }
 
-  public boolean mkdirs(Path f) throws MetaException {
+  public boolean mkdirs(Path f, boolean inheritPermCandidate) throws MetaException {
+    boolean inheritPerms = HiveConf.getBoolVar(conf,
+      HiveConf.ConfVars.HIVE_WAREHOUSE_SUBDIR_INHERIT_PERMS) && inheritPermCandidate;
     FileSystem fs = null;
     try {
       fs = getFs(f);
-      LOG.debug("Creating directory if it doesn't exist: " + f);
-      //Check if the directory already exists. We want to change the permission
-      //to that of the parent directory only for newly created directories.
-      if (this.inheritPerms) {
-        try {
-          return fs.getFileStatus(f).isDir();
-        } catch (FileNotFoundException ignore) {
-        }
-      }
-      boolean success = fs.mkdirs(f);
-      if (this.inheritPerms && success) {
-        // Set the permission of parent directory.
-        fs.setPermission(f, fs.getFileStatus(f.getParent()).getPermission());
-      }
-      return success;
+      return FileUtils.mkdir(fs, f, inheritPerms, conf);
     } catch (IOException e) {
       closeFs(fs);
       MetaStoreUtils.logAndThrowMetaException(e);
@@ -204,9 +194,31 @@ public class Warehouse {
     return false;
   }
 
+  public boolean renameDir(Path sourcePath, Path destPath) throws MetaException {
+    return renameDir(sourcePath, destPath, false);
+  }
+
+  public boolean renameDir(Path sourcePath, Path destPath, boolean inheritPerms) throws MetaException {
+    try {
+      FileSystem fs = getFs(sourcePath);
+      return FileUtils.renameWithPerms(fs, sourcePath, destPath, inheritPerms, conf);
+    } catch (Exception ex) {
+      MetaStoreUtils.logAndThrowMetaException(ex);
+    }
+    return false;
+  }
+
   public boolean deleteDir(Path f, boolean recursive) throws MetaException {
     FileSystem fs = getFs(f);
     return fsHandler.deleteDir(fs, f, recursive, conf);
+  }
+
+  public boolean isEmpty(Path path) throws IOException, MetaException {
+    ContentSummary contents = getFs(path).getContentSummary(path);
+    if (contents != null && contents.getFileCount() == 0 && contents.getDirectoryCount() == 1) {
+      return true;
+    }
+    return false;
   }
 
   public boolean isWritable(Path path) throws IOException {
@@ -353,6 +365,30 @@ public class Warehouse {
 
   static final Pattern pat = Pattern.compile("([^/]+)=([^/]+)");
 
+  private static final Pattern slash = Pattern.compile("/");
+
+  /**
+   * Extracts values from partition name without the column names.
+   * @param name Partition name.
+   * @param result The result. Must be pre-sized to the expected number of columns.
+   */
+  public static void makeValsFromName(
+      String name, AbstractList<String> result) throws MetaException {
+    assert name != null;
+    String[] parts = slash.split(name, 0);
+    if (parts.length != result.size()) {
+      throw new MetaException(
+          "Expected " + result.size() + " components, got " + parts.length + " (" + name + ")");
+    }
+    for (int i = 0; i < parts.length; ++i) {
+      int eq = parts[i].indexOf('=');
+      if (eq <= 0) {
+        throw new MetaException("Unexpected component " + parts[i]);
+      }
+      result.set(i, unescapePathName(parts[i].substring(eq + 1)));
+    }
+  }
+
   public static LinkedHashMap<String, String> makeSpecFromName(String name)
       throws MetaException {
     if (name == null || name.isEmpty()) {
@@ -450,6 +486,40 @@ public class Warehouse {
   }
 
   /**
+   * @param desc
+   * @return array of FileStatus objects corresponding to the files
+   * making up the passed storage description
+   */
+  public FileStatus[] getFileStatusesForSD(StorageDescriptor desc)
+      throws MetaException {
+    try {
+      Path path = new Path(desc.getLocation());
+      FileSystem fileSys = path.getFileSystem(conf);
+      return HiveStatsUtils.getFileStatusRecurse(path, -1, fileSys);
+    } catch (IOException ioe) {
+      MetaStoreUtils.logAndThrowMetaException(ioe);
+    }
+    return null;
+  }
+
+  /**
+   * @param table
+   * @return array of FileStatus objects corresponding to the files making up the passed
+   * unpartitioned table
+   */
+  public FileStatus[] getFileStatusesForUnpartitionedTable(Database db, Table table)
+      throws MetaException {
+    Path tablePath = getTablePath(db, table.getTableName());
+    try {
+      FileSystem fileSys = tablePath.getFileSystem(conf);
+      return HiveStatsUtils.getFileStatusRecurse(tablePath, -1, fileSys);
+    } catch (IOException ioe) {
+      MetaStoreUtils.logAndThrowMetaException(ioe);
+    }
+    return null;
+  }
+
+  /**
    * Makes a valid partition name.
    * @param partCols The partition columns
    * @param vals The partition values
@@ -461,7 +531,15 @@ public class Warehouse {
   public static String makePartName(List<FieldSchema> partCols,
       List<String> vals, String defaultStr) throws MetaException {
     if ((partCols.size() != vals.size()) || (partCols.size() == 0)) {
-      throw new MetaException("Invalid partition key & values");
+      String errorStr = "Invalid partition key & values; keys [";
+      for (FieldSchema fs : partCols) {
+        errorStr += (fs.getName() + ", ");
+      }
+      errorStr += "], values [";
+      for (String val : vals) {
+        errorStr += (val + ", ");
+      }
+      throw new MetaException(errorStr + "]");
     }
     List<String> colNames = new ArrayList<String>();
     for (FieldSchema col: partCols) {

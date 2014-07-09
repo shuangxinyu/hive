@@ -15,13 +15,13 @@ create table over10k(
        row format delimited
        fields terminated by '|';
 
-load data local inpath '../data/files/over10k' into table over10k;
+load data local inpath '../../data/files/over10k' into table over10k;
 
 select s, min(i) over (partition by s) from over10k limit 100;
 
-select s, avg(f) over (partition by si order by t) from over10k limit 100;
+select s, avg(f) over (partition by si order by s) from over10k limit 100;
 
-select s, avg(i) over (partition by t, b) from over10k limit 100;
+select s, avg(i) over (partition by t, b order by s) from over10k limit 100;
 
 select max(i) over w from over10k window w as (partition by f) limit 100;
 

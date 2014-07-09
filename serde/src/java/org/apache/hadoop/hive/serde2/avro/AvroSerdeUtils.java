@@ -25,11 +25,17 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.mapred.JobConf;
 
 import java.io.IOException;
+import java.math.BigInteger;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Properties;
 
@@ -66,13 +72,17 @@ public class AvroSerdeUtils {
       throw new AvroSerdeException(EXCEPTION_MESSAGE);
 
     try {
-      if(schemaString.toLowerCase().startsWith("hdfs://"))
-        return getSchemaFromHDFS(schemaString, new Configuration());
-    } catch(IOException ioe) {
-      throw new AvroSerdeException("Unable to read schema from HDFS: " + schemaString, ioe);
+      Schema s = getSchemaFromFS(schemaString, new Configuration());
+      if (s == null) {
+        //in case schema is not a file system
+        return Schema.parse(new URL(schemaString).openStream());
+      }
+      return s;
+    } catch (IOException ioe) {
+      throw new AvroSerdeException("Unable to read schema from given path: " + schemaString, ioe);
+    } catch (URISyntaxException urie) {
+      throw new AvroSerdeException("Unable to read schema from given path: " + schemaString, urie);
     }
-
-    return Schema.parse(new URL(schemaString).openStream());
   }
 
   /**
@@ -96,13 +106,20 @@ public class AvroSerdeUtils {
     }
   }
   // Protected for testing and so we can pass in a conf for testing.
-  protected static Schema getSchemaFromHDFS(String schemaHDFSUrl,
-                                            Configuration conf) throws IOException {
-    FileSystem fs = FileSystem.get(conf);
+  protected static Schema getSchemaFromFS(String schemaFSUrl,
+                          Configuration conf) throws IOException, URISyntaxException {
     FSDataInputStream in = null;
-
+    FileSystem fs = null;
     try {
-      in = fs.open(new Path(schemaHDFSUrl));
+      fs = FileSystem.get(new URI(schemaFSUrl), conf);
+    } catch (IOException ioe) {
+      //return null only if the file system in schema is not recognized
+      String msg = "Failed to open file system for uri " + schemaFSUrl + " assuming it is not a FileSystem url";
+      LOG.debug(msg, ioe);
+      return null;
+    }
+    try {
+      in = fs.open(new Path(schemaFSUrl));
       Schema s = Schema.parse(in);
       return s;
     } finally {
@@ -146,4 +163,32 @@ public class AvroSerdeUtils {
            && (HiveConf.getVar(job, HiveConf.ConfVars.PLAN) != null)
            && (!HiveConf.getVar(job, HiveConf.ConfVars.PLAN).isEmpty());
   }
+
+  public static Buffer getBufferFromBytes(byte[] input) {
+    ByteBuffer bb = ByteBuffer.wrap(input);
+    return bb.rewind();
+  }
+
+  public static Buffer getBufferFromDecimal(HiveDecimal dec, int scale) {
+    if (dec == null) {
+      return null;
+    }
+
+    dec = dec.setScale(scale);
+    return AvroSerdeUtils.getBufferFromBytes(dec.unscaledValue().toByteArray());
+  }
+
+  public static byte[] getBytesFromByteBuffer(ByteBuffer byteBuffer) {
+    byteBuffer.rewind();
+    byte[] result = new byte[byteBuffer.limit()];
+    byteBuffer.get(result);
+    return result;
+  }
+
+  public static HiveDecimal getHiveDecimalFromByteBuffer(ByteBuffer byteBuffer, int scale) {
+    byte[] result = getBytesFromByteBuffer(byteBuffer);
+    HiveDecimal dec = HiveDecimal.create(new BigInteger(result), scale);
+    return dec;
+  }
+
 }

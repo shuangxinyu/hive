@@ -27,7 +27,11 @@ import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.objectinspector.ListObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.StringObjectInspector;
 import org.apache.hadoop.io.Text;
 
@@ -47,7 +51,7 @@ import org.apache.hadoop.io.Text;
     + "  > SELECT _FUNC_('.', 'www', array('facebook', 'com')) FROM src LIMIT 1;\n"
     + "  'www.facebook.com'")
 public class GenericUDFConcatWS extends GenericUDF {
-  private ObjectInspector[] argumentOIs;
+  private transient ObjectInspector[] argumentOIs;
 
   @Override
   public ObjectInspector initialize(ObjectInspector[] arguments) throws UDFArgumentException {
@@ -61,15 +65,14 @@ public class GenericUDFConcatWS extends GenericUDF {
     for (int i = 0; i < arguments.length; i++) {
       switch(arguments[i].getCategory()) {
         case LIST:
-          if (((ListObjectInspector)arguments[i]).getListElementObjectInspector()
-            .getTypeName().equals(serdeConstants.STRING_TYPE_NAME)
-            || ((ListObjectInspector)arguments[i]).getListElementObjectInspector()
-            .getTypeName().equals(serdeConstants.VOID_TYPE_NAME))
-          break;
+          if (isStringOrVoidType(
+              ((ListObjectInspector) arguments[i]).getListElementObjectInspector())) {
+            break;
+          }
         case PRIMITIVE:
-          if (arguments[i].getTypeName().equals(serdeConstants.STRING_TYPE_NAME)
-            || arguments[i].getTypeName().equals(serdeConstants.VOID_TYPE_NAME))
+          if (isStringOrVoidType(arguments[i])) {
           break;
+          }
         default:
           throw new UDFArgumentTypeException(i, "Argument " + (i + 1)
             + " of function CONCAT_WS must be \"" + serdeConstants.STRING_TYPE_NAME
@@ -82,6 +85,18 @@ public class GenericUDFConcatWS extends GenericUDF {
     return PrimitiveObjectInspectorFactory.writableStringObjectInspector;
   }
 
+  protected boolean isStringOrVoidType(ObjectInspector oi) {
+    if (oi.getCategory() == Category.PRIMITIVE) {
+      if (PrimitiveGrouping.STRING_GROUP
+          == PrimitiveObjectInspectorUtils.getPrimitiveGrouping(
+              ((PrimitiveObjectInspector) oi).getPrimitiveCategory())
+          || ((PrimitiveObjectInspector) oi).getPrimitiveCategory() == PrimitiveCategory.VOID) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private final Text resultText = new Text();
 
   @Override
@@ -89,8 +104,8 @@ public class GenericUDFConcatWS extends GenericUDF {
     if (arguments[0].get() == null) {
       return null;
     }
-    String separator = ((StringObjectInspector) argumentOIs[0])
-        .getPrimitiveJavaObject(arguments[0].get());
+    String separator = PrimitiveObjectInspectorUtils.getString(
+        arguments[0].get(), (PrimitiveObjectInspector)argumentOIs[0]);
 
     StringBuilder sb = new StringBuilder();
     boolean first = true;
@@ -114,8 +129,8 @@ public class GenericUDFConcatWS extends GenericUDF {
             sb.append(strArrayOI.getListElement(strArray, j));
           }
         } else {
-          sb.append(((StringObjectInspector) argumentOIs[i])
-            .getPrimitiveJavaObject(arguments[i].get()));
+          sb.append(PrimitiveObjectInspectorUtils.getString(
+              arguments[i].get(), (PrimitiveObjectInspector)argumentOIs[i]));
         }
       }
     }

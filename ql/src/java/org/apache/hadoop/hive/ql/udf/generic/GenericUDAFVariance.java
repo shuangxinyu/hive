@@ -25,6 +25,7 @@ import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentTypeException;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.apache.hadoop.hive.ql.util.JavaDataModel;
 import org.apache.hadoop.hive.serde2.io.DoubleWritable;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
@@ -75,6 +76,7 @@ public class GenericUDAFVariance extends AbstractGenericUDAFResolver {
     case DECIMAL:
       return new GenericUDAFVarianceEvaluator();
     case BOOLEAN:
+    case DATE:
     default:
       throw new UDFArgumentTypeException(0,
           "Only numeric or string type arguments are accepted but "
@@ -102,16 +104,15 @@ public class GenericUDAFVariance extends AbstractGenericUDAFResolver {
   public static class GenericUDAFVarianceEvaluator extends GenericUDAFEvaluator {
 
     // For PARTIAL1 and COMPLETE
-    private PrimitiveObjectInspector inputOI;
+    private transient PrimitiveObjectInspector inputOI;
 
     // For PARTIAL2 and FINAL
-    private StructObjectInspector soi;
-    private StructField countField;
-    private StructField sumField;
-    private StructField varianceField;
+    private transient StructObjectInspector soi;
+    private transient StructField countField;
+    private transient StructField sumField;
+    private transient StructField varianceField;
     private LongObjectInspector countFieldOI;
     private DoubleObjectInspector sumFieldOI;
-    private DoubleObjectInspector varianceFieldOI;
 
     // For PARTIAL1 and PARTIAL2
     private Object[] partialResult;
@@ -137,8 +138,6 @@ public class GenericUDAFVariance extends AbstractGenericUDAFResolver {
         countFieldOI = (LongObjectInspector) countField
             .getFieldObjectInspector();
         sumFieldOI = (DoubleObjectInspector) sumField.getFieldObjectInspector();
-        varianceFieldOI = (DoubleObjectInspector) varianceField
-            .getFieldObjectInspector();
       }
 
       // init output
@@ -171,10 +170,13 @@ public class GenericUDAFVariance extends AbstractGenericUDAFResolver {
       }
     }
 
-    static class StdAgg implements AggregationBuffer {
+    @AggregationType(estimable = true)
+    static class StdAgg extends AbstractAggregationBuffer {
       long count; // number of elements
       double sum; // sum of elements
       double variance; // sum[x-avg^2] (this is actually n times the variance)
+      @Override
+      public int estimate() { return JavaDataModel.PRIMITIVES2 * 3; }
     };
 
     @Override

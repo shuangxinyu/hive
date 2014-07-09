@@ -18,12 +18,14 @@
 
 package org.apache.hive.service.cli.operation;
 
+import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hive.service.cli.FetchOrientation;
 import org.apache.hive.service.cli.HiveSQLException;
 import org.apache.hive.service.cli.OperationState;
 import org.apache.hive.service.cli.OperationType;
 import org.apache.hive.service.cli.RowSet;
+import org.apache.hive.service.cli.RowSetFactory;
 import org.apache.hive.service.cli.TableSchema;
 import org.apache.hive.service.cli.session.HiveSession;
 
@@ -36,10 +38,16 @@ public class GetTableTypesOperation extends MetadataOperation {
   protected static TableSchema RESULT_SET_SCHEMA = new TableSchema()
   .addStringColumn("TABLE_TYPE", "Table type name.");
 
-  private RowSet rowSet;
+  private final RowSet rowSet;
+  private final TableTypeMapping tableTypeMapping;
 
   protected GetTableTypesOperation(HiveSession parentSession) {
     super(parentSession, OperationType.GET_TABLE_TYPES);
+    String tableMappingStr = getParentSession().getHiveConf().
+        getVar(HiveConf.ConfVars.HIVE_SERVER2_TABLE_TYPE_MAPPING);
+    tableTypeMapping =
+      TableTypeMappingFactory.getTableTypeMapping(tableMappingStr);
+    rowSet = RowSetFactory.create(RESULT_SET_SCHEMA, getProtocolVersion());
   }
 
   /* (non-Javadoc)
@@ -49,9 +57,8 @@ public class GetTableTypesOperation extends MetadataOperation {
   public void run() throws HiveSQLException {
     setState(OperationState.RUNNING);
     try {
-      rowSet = new RowSet();
       for (TableType type : TableType.values()) {
-        rowSet.addRow(RESULT_SET_SCHEMA, new String[] {type.toString()});
+        rowSet.addRow(new String[] {tableTypeMapping.mapToClientType(type.toString())});
       }
       setState(OperationState.FINISHED);
     } catch (Exception e) {
@@ -75,6 +82,10 @@ public class GetTableTypesOperation extends MetadataOperation {
   @Override
   public RowSet getNextRowSet(FetchOrientation orientation, long maxRows) throws HiveSQLException {
     assertState(OperationState.FINISHED);
+    validateDefaultFetchOrientation(orientation);
+    if (orientation.equals(FetchOrientation.FETCH_FIRST)) {
+      rowSet.setStartOffset(0);
+    }
     return rowSet.extractSubset((int)maxRows);
   }
 

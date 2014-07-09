@@ -31,14 +31,14 @@ public enum OperationState {
   CANCELED(TOperationState.CANCELED_STATE),
   CLOSED(TOperationState.CLOSED_STATE),
   ERROR(TOperationState.ERROR_STATE),
-  UNKNOWN(TOperationState.UKNOWN_STATE);
+  UNKNOWN(TOperationState.UKNOWN_STATE),
+  PENDING(TOperationState.PENDING_STATE);
 
   private final TOperationState tOperationState;
 
   OperationState(TOperationState tOperationState) {
     this.tOperationState = tOperationState;
   }
-
 
   public static OperationState getOperationState(TOperationState tOperationState) {
     // TODO: replace this with a Map?
@@ -50,12 +50,25 @@ public enum OperationState {
     return OperationState.UNKNOWN;
   }
 
-  public static void validateTransition(OperationState oldState, OperationState newState)
-      throws HiveSQLException {
+  public static void validateTransition(OperationState oldState,
+      OperationState newState)
+          throws HiveSQLException {
     switch (oldState) {
     case INITIALIZED:
       switch (newState) {
+      case PENDING:
       case RUNNING:
+      case CANCELED:
+      case CLOSED:
+        return;
+      }
+      break;
+    case PENDING:
+      switch (newState) {
+      case RUNNING:
+      case FINISHED:
+      case CANCELED:
+      case ERROR:
       case CLOSED:
         return;
       }
@@ -82,7 +95,7 @@ public enum OperationState {
   }
 
   public void validateTransition(OperationState newState)
-  throws HiveSQLException {
+      throws HiveSQLException {
     validateTransition(this, newState);
   }
 

@@ -36,6 +36,12 @@ import org.apache.hadoop.io.Writable;
  */
 public class AvroSerDe extends AbstractSerDe {
   private static final Log LOG = LogFactory.getLog(AvroSerDe.class);
+
+  public static final String DECIMAL_TYPE_NAME = "decimal";
+  public static final String AVRO_PROP_LOGICAL_TYPE = "logicalType";
+  public static final String AVRO_PROP_PRECISION = "precision";
+  public static final String AVRO_PROP_SCALE = "scale";
+
   private ObjectInspector oi;
   private List<String> columnNames;
   private List<TypeInfo> columnTypes;
@@ -44,6 +50,13 @@ public class AvroSerDe extends AbstractSerDe {
   private AvroSerializer avroSerializer = null;
 
   private boolean badSchema = false;
+
+  @Override
+  public void initialize(Configuration configuration, Properties tableProperties,
+                         Properties partitionProperties) throws SerDeException {
+    // Avro should always use the table properties for initialization (see HIVE-6835).
+    initialize(configuration, tableProperties);
+  }
 
   @Override
   public void initialize(Configuration configuration, Properties properties) throws SerDeException {
@@ -61,8 +74,6 @@ public class AvroSerDe extends AbstractSerDe {
     if(configuration == null) {
       LOG.info("Configuration null, not inserting schema");
     } else {
-      // force output files to have a .avro extension
-      configuration.set("hive.output.file.extension", ".avro");
       configuration.set(AvroSerdeUtils.AVRO_SERDE_SCHEMA, schema.toString(false));
     }
 

@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Stack;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.GroupByOperator;
 import org.apache.hadoop.hive.ql.exec.HashTableDummyOperator;
@@ -44,8 +46,10 @@ import org.apache.hadoop.hive.ql.lib.Rule;
 import org.apache.hadoop.hive.ql.lib.RuleRegExp;
 import org.apache.hadoop.hive.ql.optimizer.physical.MapJoinResolver.LocalMapJoinProcCtx;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.HashTableDummyDesc;
 import org.apache.hadoop.hive.ql.plan.HashTableSinkDesc;
+import org.apache.hadoop.hive.ql.plan.MapJoinDesc;
 import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.hive.ql.plan.PlanUtils;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
@@ -58,6 +62,7 @@ import org.apache.hadoop.hive.ql.plan.TableDesc;
  * OOM in group by operator.
  */
 public final class LocalMapJoinProcFactory {
+  private static final Log LOG = LogFactory.getLog(LocalMapJoinProcFactory.class);
 
   public static NodeProcessor getJoinProc() {
     return new LocalMapJoinProcessor();
@@ -115,46 +120,88 @@ public final class LocalMapJoinProcFactory {
         e.printStackTrace();
       }
 
+      MapJoinDesc mapJoinDesc = mapJoinOp.getConf();
+
       // mapjoin should not affected by join reordering
-      mapJoinOp.getConf().resetOrder();
+      mapJoinDesc.resetOrder();
 
-      HashTableSinkDesc hashTableSinkDesc = new HashTableSinkDesc(mapJoinOp.getConf());
-      HashTableSinkOperator hashTableSinkOp = (HashTableSinkOperator) OperatorFactory
-          .get(hashTableSinkDesc);
-
+      HiveConf conf = context.getParseCtx().getConf();
       // set hashtable memory usage
       float hashtableMemoryUsage;
       if (context.isFollowedByGroupBy()) {
-        hashtableMemoryUsage = context.getParseCtx().getConf().getFloatVar(
+        hashtableMemoryUsage = conf.getFloatVar(
             HiveConf.ConfVars.HIVEHASHTABLEFOLLOWBYGBYMAXMEMORYUSAGE);
       } else {
-        hashtableMemoryUsage = context.getParseCtx().getConf().getFloatVar(
+        hashtableMemoryUsage = conf.getFloatVar(
             HiveConf.ConfVars.HIVEHASHTABLEMAXMEMORYUSAGE);
       }
-      hashTableSinkOp.getConf().setHashtableMemoryUsage(hashtableMemoryUsage);
+      mapJoinDesc.setHashTableMemoryUsage(hashtableMemoryUsage);
+      LOG.info("Setting max memory usage to " + hashtableMemoryUsage + " for table sink "
+          + (context.isFollowedByGroupBy() ? "" : "not") + " followed by group by");
+
+      HashTableSinkDesc hashTableSinkDesc = new HashTableSinkDesc(mapJoinDesc);
+      HashTableSinkOperator hashTableSinkOp = (HashTableSinkOperator) OperatorFactory
+          .get(hashTableSinkDesc);
 
       // get the last operator for processing big tables
-      int bigTable = mapJoinOp.getConf().getPosBigTable();
+      int bigTable = mapJoinDesc.getPosBigTable();
+
+      // todo: support tez/vectorization
+      boolean useNontaged = conf.getBoolVar(
+          HiveConf.ConfVars.HIVECONVERTJOINUSENONSTAGED) &&
+          conf.getVar(HiveConf.ConfVars.HIVE_EXECUTION_ENGINE).equals("mr") &&
+          !conf.getBoolVar(HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED);
 
       // the parent ops for hashTableSinkOp
       List<Operator<? extends OperatorDesc>> smallTablesParentOp =
         new ArrayList<Operator<? extends OperatorDesc>>();
       List<Operator<? extends OperatorDesc>> dummyOperators =
         new ArrayList<Operator<? extends OperatorDesc>>();
+      List<Operator<? extends OperatorDesc>> directOperators =
+          new ArrayList<Operator<? extends OperatorDesc>>();
       // get all parents
       List<Operator<? extends OperatorDesc>> parentsOp = mapJoinOp.getParentOperators();
-      for (int i = 0; i < parentsOp.size(); i++) {
+      for (byte i = 0; i < parentsOp.size(); i++) {
         if (i == bigTable) {
           smallTablesParentOp.add(null);
+          directOperators.add(null);
           continue;
         }
         Operator<? extends OperatorDesc> parent = parentsOp.get(i);
+        boolean directFetchable = useNontaged &&
+            (parent instanceof TableScanOperator || parent instanceof MapJoinOperator);
+        if (directFetchable) {
+          // no filter, no projection. no need to stage
+          smallTablesParentOp.add(null);
+          directOperators.add(parent);
+          hashTableSinkDesc.getKeys().put(i, null);
+          hashTableSinkDesc.getExprs().put(i, null);
+          hashTableSinkDesc.getFilters().put(i, null);
+        } else {
+          // keep the parent id correct
+          smallTablesParentOp.add(parent);
+          directOperators.add(null);
+          int[] valueIndex = mapJoinDesc.getValueIndex(i);
+          if (valueIndex != null) {
+            // remove values in key exprs
+            // schema for value is already fixed in MapJoinProcessor#convertJoinOpMapJoinOp
+            List<ExprNodeDesc> newValues = new ArrayList<ExprNodeDesc>();
+            List<ExprNodeDesc> values = hashTableSinkDesc.getExprs().get(i);
+            for (int index = 0; index < values.size(); index++) {
+              if (valueIndex[index] < 0) {
+                newValues.add(values.get(index));
+              }
+            }
+            hashTableSinkDesc.getExprs().put(i, newValues);
+          }
+        }
         // let hashtable Op be the child of this parent
         parent.replaceChild(mapJoinOp, hashTableSinkOp);
-        // keep the parent id correct
-        smallTablesParentOp.add(parent);
+        if (directFetchable) {
+          parent.setChildOperators(null);
+        }
 
-        // create an new operator: HashTable DummyOpeator, which share the table desc
+        // create new operator: HashTable DummyOperator, which share the table desc
         HashTableDummyDesc desc = new HashTableDummyDesc();
         HashTableDummyOperator dummyOp = (HashTableDummyOperator) OperatorFactory.get(desc);
         TableDesc tbl;
@@ -163,7 +210,8 @@ public final class LocalMapJoinProcFactory {
           if (parent instanceof TableScanOperator) {
             tbl = ((TableScanOperator) parent).getTableDesc();
           } else {
-            throw new SemanticException();
+            throw new SemanticException("Expected parent operator of type TableScanOperator." +
+              "Found " + parent.getClass().getName() + " instead.");
           }
         } else {
           // get parent schema
@@ -185,7 +233,19 @@ public final class LocalMapJoinProcFactory {
       for (Operator<? extends OperatorDesc> op : dummyOperators) {
         context.addDummyParentOp(op);
       }
+      if (hasAnyDirectFetch(directOperators)) {
+        context.addDirectWorks(mapJoinOp, directOperators);
+      }
       return null;
+    }
+
+    private boolean hasAnyDirectFetch(List<Operator<?>> directOperators) {
+      for (Operator<?> operator : directOperators) {
+        if (operator != null) {
+          return true;
+        }
+      }
+      return false;
     }
 
     public void hasGroupBy(Operator<? extends OperatorDesc> mapJoinOp,

@@ -22,23 +22,27 @@ import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.hadoop.hive.common.type.HiveDecimal;
+import org.apache.hadoop.hive.common.type.HiveVarchar;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.objectinspector.ListObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.MapObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.UnionObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveTypeEntry;
@@ -56,7 +60,7 @@ public final class TypeInfoUtils {
   /**
    * Return the extended TypeInfo from a Java type. By extended TypeInfo, we
    * allow unknownType for java.lang.Object.
-   * 
+   *
    * @param t
    *          The Java type.
    * @param m
@@ -148,7 +152,7 @@ public final class TypeInfoUtils {
 
   /**
    * Get the parameter TypeInfo for a method.
-   * 
+   *
    * @param size
    *          In case the last parameter of Method is an array, we will try to
    *          return a List<TypeInfo> with the specified size by repeating the
@@ -194,12 +198,46 @@ public final class TypeInfoUtils {
     return typeInfos;
   }
 
+  public static boolean hasParameters(String typeName) {
+    int idx = typeName.indexOf('(');
+    if (idx == -1) {
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+  public static String getBaseName(String typeName) {
+    int idx = typeName.indexOf('(');
+    if (idx == -1) {
+      return typeName;
+    } else {
+      return typeName.substring(0, idx);
+    }
+  }
+
+  /**
+   * returns true if both TypeInfos are of primitive type, and the primitive category matches.
+   * @param ti1
+   * @param ti2
+   * @return
+   */
+  public static boolean doPrimitiveCategoriesMatch(TypeInfo ti1, TypeInfo ti2) {
+    if (ti1.getCategory() == Category.PRIMITIVE && ti2.getCategory() == Category.PRIMITIVE) {
+      if (((PrimitiveTypeInfo)ti1).getPrimitiveCategory()
+          == ((PrimitiveTypeInfo)ti2).getPrimitiveCategory()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Parse a recursive TypeInfo list String. For example, the following inputs
    * are valid inputs:
    * "int,string,map<string,int>,list<map<int,list<string>>>,list<struct<a:int,b:string>>"
    * The separators between TypeInfos can be ",", ":", or ";".
-   * 
+   *
    * In order to use this class: TypeInfoParser parser = new
    * TypeInfoParser("int,string"); ArrayList<TypeInfo> typeInfos =
    * parser.parseTypeInfos();
@@ -225,7 +263,7 @@ public final class TypeInfoUtils {
      * Tokenize the typeInfoString. The rule is simple: all consecutive
      * alphadigits and '_', '.' are in one token, and all other characters are
      * one character per token.
-     * 
+     *
      * tokenize("map<int,string>") should return
      * ["map","<","int",",","string",">"]
      */
@@ -281,6 +319,14 @@ public final class TypeInfoUtils {
       return typeInfos;
     }
 
+    private Token peek() {
+      if (iToken < typeInfoTokens.size()) {
+        return typeInfoTokens.get(iToken);
+      } else {
+        return null;
+      }
+    }
+
     private Token expect(String item) {
       return expect(item, null);
     }
@@ -320,16 +366,79 @@ public final class TypeInfoUtils {
       return t;
     }
 
+    private String[] parseParams() {
+      List<String> params = new LinkedList<String>();
+
+      Token t = peek();
+      if (t != null && t.text.equals("(")) {
+        expect("(");
+
+        // checking for null in the for-loop condition prevents null-ptr exception
+        // and allows us to fail more gracefully with a parsing error.
+        for(t = peek(); (t == null) || !t.text.equals(")"); t = expect(",",")")) {
+          params.add(expect("name").text);
+        }
+        if (params.size() == 0) {
+          throw new IllegalArgumentException(
+              "type parameters expected for type string " + typeInfoString);
+        }
+      }
+
+      return params.toArray(new String[params.size()]);
+    }
+
     private TypeInfo parseType() {
 
       Token t = expect("type");
 
       // Is this a primitive type?
-      PrimitiveTypeEntry primitiveType = PrimitiveObjectInspectorUtils
-          .getTypeEntryFromTypeName(t.text);
-      if (primitiveType != null
-          && !primitiveType.primitiveCategory.equals(PrimitiveCategory.UNKNOWN)) {
-        return TypeInfoFactory.getPrimitiveTypeInfo(primitiveType.typeName);
+      PrimitiveTypeEntry typeEntry =
+          PrimitiveObjectInspectorUtils.getTypeEntryFromTypeName(t.text);
+      if (typeEntry != null && typeEntry.primitiveCategory != PrimitiveCategory.UNKNOWN ) {
+        String[] params = parseParams();
+        switch (typeEntry.primitiveCategory) {
+        case CHAR:
+        case VARCHAR:
+          if (params == null || params.length == 0) {
+            throw new IllegalArgumentException(typeEntry.typeName
+                + " type is specified without length: " + typeInfoString);
+          }
+
+          int length = 1;
+          if (params.length == 1) {
+            length = Integer.valueOf(params[0]);
+            if (typeEntry.primitiveCategory == PrimitiveCategory.VARCHAR) {
+              BaseCharUtils.validateVarcharParameter(length);
+              return TypeInfoFactory.getVarcharTypeInfo(length);
+            } else {
+              BaseCharUtils.validateCharParameter(length);
+              return TypeInfoFactory.getCharTypeInfo(length);
+            }
+          } else if (params.length > 1) {
+            throw new IllegalArgumentException(
+                "Type " + typeEntry.typeName+ " only takes one parameter, but " +
+                params.length + " is seen");
+          }
+        case DECIMAL:
+          int precision = HiveDecimal.USER_DEFAULT_PRECISION;
+          int scale = HiveDecimal.USER_DEFAULT_SCALE;
+          if (params == null || params.length == 0) {
+            // It's possible that old metadata still refers to "decimal" as a column type w/o
+            // precision/scale. In this case, the default (10,0) is assumed. Thus, do nothing here.
+          } else if (params.length == 2) {
+            // New metadata always have two parameters.
+            precision = Integer.valueOf(params[0]);
+            scale = Integer.valueOf(params[1]);
+            HiveDecimalUtils.validateParameter(precision, scale);
+          } else if (params.length > 2) {
+            throw new IllegalArgumentException("Type decimal only takes two parameter, but " +
+                params.length + " is seen");
+          }
+
+          return TypeInfoFactory.getDecimalTypeInfo(precision, scale);
+        default:
+          return TypeInfoFactory.getPrimitiveTypeInfo(typeEntry.typeName);
+        }
       }
 
       // Is this a list type?
@@ -399,6 +508,26 @@ public final class TypeInfoUtils {
           + t.position + " of '" + typeInfoString + "'");
     }
 
+    public PrimitiveParts parsePrimitiveParts() {
+      PrimitiveParts parts = new PrimitiveParts();
+      Token t = expect("type");
+      parts.typeName = t.text;
+      parts.typeParams = parseParams();
+      return parts;
+    }
+  }
+
+  public static class PrimitiveParts {
+    public String  typeName;
+    public String[] typeParams;
+  }
+
+  /**
+   * Make some of the TypeInfo parsing available as a utility.
+   */
+  public static PrimitiveParts parsePrimitiveParts(String typeInfoString) {
+    TypeInfoParser parser = new TypeInfoParser(typeInfoString);
+    return parser.parsePrimitiveParts();
   }
 
   static Map<TypeInfo, ObjectInspector> cachedStandardObjectInspector =
@@ -414,9 +543,8 @@ public final class TypeInfoUtils {
     if (result == null) {
       switch (typeInfo.getCategory()) {
       case PRIMITIVE: {
-        result = PrimitiveObjectInspectorFactory
-            .getPrimitiveWritableObjectInspector(((PrimitiveTypeInfo) typeInfo)
-            .getPrimitiveCategory());
+        result = PrimitiveObjectInspectorFactory.getPrimitiveWritableObjectInspector(
+            (PrimitiveTypeInfo) typeInfo);
         break;
       }
       case LIST: {
@@ -494,8 +622,7 @@ public final class TypeInfoUtils {
         // NOTE: we use JavaPrimitiveObjectInspector instead of
         // StandardPrimitiveObjectInspector
         result = PrimitiveObjectInspectorFactory
-            .getPrimitiveJavaObjectInspector(PrimitiveObjectInspectorUtils
-            .getTypeEntryFromTypeName(typeInfo.getTypeName()).primitiveCategory);
+            .getPrimitiveJavaObjectInspector((PrimitiveTypeInfo) typeInfo);
         break;
       }
       case LIST: {
@@ -576,7 +703,7 @@ public final class TypeInfoUtils {
     switch (oi.getCategory()) {
     case PRIMITIVE: {
       PrimitiveObjectInspector poi = (PrimitiveObjectInspector) oi;
-      result = TypeInfoFactory.getPrimitiveTypeInfo(poi.getTypeName());
+      result = poi.getTypeInfo();
       break;
     }
     case LIST: {
@@ -630,5 +757,41 @@ public final class TypeInfoUtils {
   public static TypeInfo getTypeInfoFromTypeString(String typeString) {
     TypeInfoParser parser = new TypeInfoParser(typeString);
     return parser.parseTypeInfos().get(0);
+  }
+
+  /**
+   * Given two types, determine whether conversion needs to occur to compare the two types.
+   * This is needed for cases like varchar, where the TypeInfo for varchar(10) != varchar(5),
+   * but there would be no need to have to convert to compare these values.
+   * @param typeA
+   * @param typeB
+   * @return
+   */
+  public static boolean isConversionRequiredForComparison(TypeInfo typeA, TypeInfo typeB) {
+    if (typeA == typeB) {
+      return false;
+    }
+    if (TypeInfoUtils.doPrimitiveCategoriesMatch(typeA,  typeB)) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Return the character length of the type
+   * @param typeInfo
+   * @return
+   */
+  public static int getCharacterLengthForType(PrimitiveTypeInfo typeInfo) {
+    switch (typeInfo.getPrimitiveCategory()) {
+      case STRING:
+        return HiveVarchar.MAX_VARCHAR_LENGTH;
+      case CHAR:
+      case VARCHAR:
+        BaseCharTypeInfo baseCharTypeInfo = (BaseCharTypeInfo) typeInfo;
+        return baseCharTypeInfo.getLength();
+      default:
+        return 0;
+    }
   }
 }

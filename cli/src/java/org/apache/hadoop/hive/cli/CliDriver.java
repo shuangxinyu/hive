@@ -18,13 +18,16 @@
 
 package org.apache.hadoop.hive.cli;
 
+import static org.apache.hadoop.util.StringUtils.stringifyException;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -32,29 +35,32 @@ import java.util.Map;
 import java.util.Set;
 
 import jline.ArgumentCompletor;
+import jline.ArgumentCompletor.AbstractArgumentDelimiter;
+import jline.ArgumentCompletor.ArgumentDelimiter;
 import jline.Completor;
 import jline.ConsoleReader;
 import jline.History;
 import jline.SimpleCompletor;
-import jline.ArgumentCompletor.AbstractArgumentDelimiter;
-import jline.ArgumentCompletor.ArgumentDelimiter;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.HiveInterruptUtils;
 import org.apache.hadoop.hive.common.LogUtils;
 import org.apache.hadoop.hive.common.LogUtils.LogInitializationException;
+import org.apache.hadoop.hive.common.cli.ShellCmdExecutor;
 import org.apache.hadoop.hive.common.io.CachingPrintStream;
+import org.apache.hadoop.hive.common.io.FetchConverter;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.CommandNeedRetryException;
 import org.apache.hadoop.hive.ql.Driver;
 import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
-import org.apache.hadoop.hive.ql.exec.HadoopJobExecHelper;
 import org.apache.hadoop.hive.ql.exec.Utilities;
-import org.apache.hadoop.hive.ql.exec.Utilities.StreamPrinter;
+import org.apache.hadoop.hive.ql.exec.mr.HadoopJobExecHelper;
 import org.apache.hadoop.hive.ql.parse.HiveParser;
 import org.apache.hadoop.hive.ql.parse.VariableSubstitution;
 import org.apache.hadoop.hive.ql.processors.CommandProcessor;
@@ -64,7 +70,6 @@ import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 import org.apache.hadoop.hive.service.HiveClient;
 import org.apache.hadoop.hive.service.HiveServerException;
-import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.thrift.TException;
 
@@ -96,6 +101,7 @@ public class CliDriver {
 
   public int processCmd(String cmd) {
     CliSessionState ss = (CliSessionState) SessionState.get();
+    ss.setLastCommand(cmd);
     // Flush the print stream, so it doesn't include output from the last command
     ss.err.flush();
     String cmd_trimmed = cmd.trim();
@@ -112,6 +118,7 @@ public class CliDriver {
 
     } else if (tokens[0].equalsIgnoreCase("source")) {
       String cmd_1 = getFirstCmd(cmd_trimmed, tokens[0].length());
+      cmd_1 = new VariableSubstitution().substitute(ss.getConf(), cmd_1);
 
       File sourceFile = new File(cmd_1);
       if (! sourceFile.isFile()){
@@ -122,7 +129,7 @@ public class CliDriver {
           this.processFile(cmd_1);
         } catch (IOException e) {
           console.printError("Failed processing file "+ cmd_1 +" "+ e.getLocalizedMessage(),
-            org.apache.hadoop.util.StringUtils.stringifyException(e));
+            stringifyException(e));
           ret = 1;
         }
       }
@@ -133,23 +140,16 @@ public class CliDriver {
 
       // shell_cmd = "/bin/bash -c \'" + shell_cmd + "\'";
       try {
-        Process executor = Runtime.getRuntime().exec(shell_cmd);
-        StreamPrinter outPrinter = new StreamPrinter(executor.getInputStream(), null, ss.out);
-        StreamPrinter errPrinter = new StreamPrinter(executor.getErrorStream(), null, ss.err);
-
-        outPrinter.start();
-        errPrinter.start();
-
-        ret = executor.waitFor();
+        ShellCmdExecutor executor = new ShellCmdExecutor(shell_cmd, ss.out, ss.err);
+        ret = executor.execute();
         if (ret != 0) {
           console.printError("Command failed with exit code = " + ret);
         }
       } catch (Exception e) {
         console.printError("Exception raised from Shell command " + e.getLocalizedMessage(),
-            org.apache.hadoop.util.StringUtils.stringifyException(e));
+            stringifyException(e));
         ret = 1;
       }
-
     } else if (tokens[0].toLowerCase().equals("list")) {
 
       SessionState.ResourceType t;
@@ -212,8 +212,14 @@ public class CliDriver {
         }
       }
     } else { // local mode
-      CommandProcessor proc = CommandProcessorFactory.get(tokens[0], (HiveConf) conf);
-      ret = processLocalCmd(cmd, proc, ss);
+      try {
+        CommandProcessor proc = CommandProcessorFactory.get(tokens, (HiveConf) conf);
+        ret = processLocalCmd(cmd, proc, ss);
+      } catch (SQLException e) {
+        console.printError("Failed processing command " + tokens[0] + " " + e.getLocalizedMessage(),
+          org.apache.hadoop.util.StringUtils.stringifyException(e));
+        ret = 1;
+      }
     }
 
     return ret;
@@ -262,12 +268,20 @@ public class CliDriver {
               return ret;
             }
 
+            // query has run capture the time
+            long end = System.currentTimeMillis();
+            double timeTaken = (end - start) / 1000.0;
+
             ArrayList<String> res = new ArrayList<String>();
 
             printHeader(qp, out);
 
+            // print the results
             int counter = 0;
             try {
+              if (out instanceof FetchConverter) {
+                ((FetchConverter)out).fetchStarted();
+              }
               while (qp.getResults(res)) {
                 for (String r : res) {
                   out.println(r);
@@ -290,11 +304,12 @@ public class CliDriver {
               ret = cret;
             }
 
-            long end = System.currentTimeMillis();
-            double timeTaken = (end - start) / 1000.0;
+            if (out instanceof FetchConverter) {
+              ((FetchConverter)out).fetchFinished();
+            }
+
             console.printInfo("Time taken: " + timeTaken + " seconds" +
                 (counter == 0 ? "" : ", Fetched: " + counter + " row(s)"));
-
           } else {
             String firstToken = tokenizeCmd(cmd.trim())[0];
             String cmd_1 = getFirstCmd(cmd.trim(), firstToken.length());
@@ -389,7 +404,6 @@ public class CliDriver {
           // First, kill any running MR jobs
           HadoopJobExecHelper.killRunningJobs();
           HiveInterruptUtils.interrupt();
-          this.cliThread.interrupt();
         }
       });
     }
@@ -447,15 +461,19 @@ public class CliDriver {
   }
 
   public int processFile(String fileName) throws IOException {
-    FileReader fileReader = null;
+    Path path = new Path(fileName);
+    FileSystem fs;
+    if (!path.toUri().isAbsolute()) {
+      fs = FileSystem.getLocal(conf);
+      path = fs.makeQualified(path);
+    } else {
+      fs = FileSystem.get(path.toUri(), conf);
+    }
     BufferedReader bufferReader = null;
     int rc = 0;
     try {
-      fileReader = new FileReader(fileName);
-      bufferReader = new BufferedReader(fileReader);
+      bufferReader = new BufferedReader(new InputStreamReader(fs.open(path)));
       rc = processReader(bufferReader);
-      bufferReader.close();
-      bufferReader = null;
     } finally {
       IOUtils.closeStream(bufferReader);
     }
@@ -568,8 +586,9 @@ public class CliDriver {
     // We stack a custom Completor on top of our ArgumentCompletor
     // to reverse this.
     Completor completor = new Completor () {
+      @Override
       public int complete (String buffer, int offset, List completions) {
-        List<String> comp = (List<String>) completions;
+        List<String> comp = completions;
         int ret = ac.complete(buffer, offset, completions);
         // ConsoleReader will do the substitution if and only if there
         // is exactly one valid completion, so we ignore other cases.
@@ -611,11 +630,11 @@ public class CliDriver {
   }
 
   public static void main(String[] args) throws Exception {
-    int ret = run(args);
+    int ret = new CliDriver().run(args);
     System.exit(ret);
   }
 
-  public static int run(String[] args) throws Exception {
+  public  int run(String[] args) throws Exception {
 
     OptionsProcessor oproc = new OptionsProcessor();
     if (!oproc.process_stage1(args)) {
@@ -669,6 +688,30 @@ public class CliDriver {
 
     SessionState.start(ss);
 
+    // execute cli driver work
+    int ret = 0;
+    try {
+      ret = executeDriver(ss, conf, oproc);
+    } catch (Exception e) {
+      ss.close();
+      throw e;
+    }
+
+    ss.close();
+    return ret;
+  }
+
+  /**
+   * Execute the cli work
+   * @param ss CliSessionState of the CLI driver
+   * @param conf HiveConf for the driver sionssion
+   * @param oproc Opetion processor of the CLI invocation
+   * @return status of the CLI comman execution
+   * @throws Exception
+   */
+  private  int executeDriver(CliSessionState ss, HiveConf conf, OptionsProcessor oproc)
+      throws Exception {
+
     // connect to Hive Server
     if (ss.getHost() != null) {
       ss.connect();
@@ -681,7 +724,7 @@ public class CliDriver {
     }
 
     // CLI remote mode is a thin client: only load auxJars in local mode
-    if (!ss.isRemoteMode() && !ShimLoader.getHadoopShims().usesJobShell()) {
+    if (!ss.isRemoteMode()) {
       // hadoop-20 and above - we need to augment classpath using hiveconf
       // components
       // see also: code in ExecDriver.java
@@ -704,7 +747,8 @@ public class CliDriver {
     cli.processInitFiles(ss);
 
     if (ss.execString != null) {
-      return cli.processLine(ss.execString);
+      int cmdProcessStatus = cli.processLine(ss.execString);
+      return cmdProcessStatus;
     }
 
     try {
@@ -716,7 +760,7 @@ public class CliDriver {
       return 3;
     }
 
-    ConsoleReader reader = new ConsoleReader();
+    ConsoleReader reader =  getConsoleReader();
     reader.setBellEnabled(false);
     // reader.setDebug(new PrintWriter(new FileWriter("writer.debug", true)));
     for (Completor completor : getCommandCompletor()) {
@@ -764,12 +808,12 @@ public class CliDriver {
         continue;
       }
     }
-
-    ss.close();
-
     return ret;
   }
 
+  protected ConsoleReader getConsoleReader() throws IOException{
+    return new ConsoleReader();
+  }
   /**
    * Retrieve the current database name string to display, based on the
    * configuration value.
@@ -781,7 +825,8 @@ public class CliDriver {
     if (!HiveConf.getBoolVar(conf, HiveConf.ConfVars.CLIPRINTCURRENTDB)) {
       return "";
     }
-    String currDb = ss.getCurrentDbName();
+    //BUG: This will not work in remote mode - HIVE-5153
+    String currDb = SessionState.get().getCurrentDatabase();
 
     if (currDb == null) {
       return "";

@@ -1,48 +1,28 @@
-/*
- *  Copyright (c) 2002,2003,2004,2005 Marc Prud'hommeaux
- *  All rights reserved.
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Redistribution and use in source and binary forms,
- *  with or without modification, are permitted provided
- *  that the following conditions are met:
- *
- *  Redistributions of source code must retain the above
- *  copyright notice, this list of conditions and the following
- *  disclaimer.
- *  Redistributions in binary form must reproduce the above
- *  copyright notice, this list of conditions and the following
- *  disclaimer in the documentation and/or other materials
- *  provided with the distribution.
- *  Neither the name of the <ORGANIZATION> nor the names
- *  of its contributors may be used to endorse or promote
- *  products derived from this software without specific
- *  prior written permission.
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS
- *  AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- *  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- *  PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- *  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- *  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- *  BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- *  OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
- *  IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- *  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *  This software is hosted by SourceForge.
- *  SourceForge is a trademark of VA Linux Systems, Inc.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 /*
  * This source file is based on code taken from SQLLine 1.0.2
- * The license above originally appeared in src/sqlline/SqlLine.java
- * http://sqlline.sourceforge.net/
+ * See SQLLine notice in LICENSE
  */
 package org.apache.hive.beeline;
+
+import org.apache.hadoop.io.IOUtils;
 
 import java.io.BufferedReader;
 import java.io.FileInputStream;
@@ -65,6 +45,8 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+
+import org.apache.hadoop.hive.common.cli.ShellCmdExecutor;
 
 
 public class Commands {
@@ -96,8 +78,12 @@ public class Commands {
 
 
   public boolean metadata(String cmd, String[] args) {
+    if (!(beeLine.assertConnection())) {
+      return false;
+    }
+
     try {
-      Method[] m = beeLine.getDatabaseConnection().getDatabaseMetaData().getClass().getMethods();
+      Method[] m = beeLine.getDatabaseMetaData().getClass().getMethods();
       Set<String> methodNames = new TreeSet<String>();
       Set<String> methodNamesUpper = new TreeSet<String>();
       for (int i = 0; i < m.length; i++) {
@@ -114,7 +100,7 @@ public class Commands {
         return false;
       }
 
-      Object res = beeLine.getReflector().invoke(beeLine.getDatabaseConnection().getDatabaseMetaData(),
+      Object res = beeLine.getReflector().invoke(beeLine.getDatabaseMetaData(),
           DatabaseMetaData.class, cmd, Arrays.asList(args));
 
       if (res instanceof ResultSet) {
@@ -224,7 +210,7 @@ public class Commands {
     if (sql.startsWith("native")) {
       sql = sql.substring("native".length() + 1);
     }
-    String nat = beeLine.getDatabaseConnection().getConnection().nativeSQL(sql);
+    String nat = beeLine.getConnection().nativeSQL(sql);
     beeLine.output(nat);
     return true;
   }
@@ -568,7 +554,7 @@ public class Commands {
     for (int i = 0; i < m.length; i++) {
       try {
         beeLine.output(beeLine.getColorBuffer().pad(m[i], padlen).append(
-            "" + beeLine.getReflector().invoke(beeLine.getDatabaseConnection().getDatabaseMetaData(),
+            "" + beeLine.getReflector().invoke(beeLine.getDatabaseMetaData(),
                 m[i], new Object[0])));
       } catch (Exception e) {
         beeLine.handleException(e);
@@ -675,6 +661,36 @@ public class Commands {
     return execute(line, false);
   }
 
+  public boolean sh(String line) {
+    if (line == null || line.length() == 0) {
+      return false;
+    }
+
+    if (!line.startsWith("sh")) {
+      return false;
+    }
+
+    line = line.substring("sh".length()).trim();
+
+    // Support variable substitution. HIVE-6791.
+    // line = new VariableSubstitution().substitute(new HiveConf(BeeLine.class), line.trim());
+
+    try {
+      ShellCmdExecutor executor = new ShellCmdExecutor(line, beeLine.getOutputStream(),
+          beeLine.getErrorStream());
+      int ret = executor.execute();
+      if (ret != 0) {
+        beeLine.output("Command failed with exit code = " + ret);
+        return false;
+      }
+      return true;
+    } catch (Exception e) {
+      beeLine.error("Exception raised from Shell command " + e);
+      beeLine.error(e);
+      return false;
+    }
+  }
+
   public boolean call(String line) {
     return execute(line, true);
   }
@@ -692,7 +708,10 @@ public class Commands {
 
     // use multiple lines for statements not terminated by ";"
     try {
-      while (!(line.trim().endsWith(";"))) {
+      //When using -e, console reader is not initialized and command is a single line
+      while (beeLine.getConsoleReader() != null && !(line.trim().endsWith(";"))
+        && beeLine.getOpts().isAllowMultiLineCommand()) {
+
         StringBuilder prompt = new StringBuilder(beeLine.getPrompt());
         for (int i = 0; i < prompt.length() - 1; i++) {
           if (prompt.charAt(i) != '>') {
@@ -708,6 +727,7 @@ public class Commands {
     } catch (Exception e) {
       beeLine.handleException(e);
     }
+
 
     if (line.endsWith(";")) {
       line = line.substring(0, line.length() - 1);
@@ -771,9 +791,6 @@ public class Commands {
           beeLine.info(beeLine.loc("rows-affected", count)
               + " " + beeLine.locElapsedTime(end - start));
         }
-      } catch (Exception e) {
-        beeLine.error(e);
-        throw e;
       } finally {
         if (stmnt != null) {
           stmnt.close();
@@ -818,8 +835,8 @@ public class Commands {
     try {
       if (beeLine.getDatabaseConnection().getConnection() != null
           && !(beeLine.getDatabaseConnection().getConnection().isClosed())) {
-        beeLine.info(beeLine.loc("closing",
-            beeLine.getDatabaseConnection().getConnection().getClass().getName()));
+        int index = beeLine.getDatabaseConnections().getIndex();
+        beeLine.info(beeLine.loc("closing", index, beeLine.getDatabaseConnection()));
         beeLine.getDatabaseConnection().getConnection().close();
       } else {
         beeLine.info(beeLine.loc("already-closed"));
@@ -848,7 +865,12 @@ public class Commands {
 
     for (int i = 1; i < parts.length; i++) {
       Properties props = new Properties();
-      props.load(new FileInputStream(parts[i]));
+      InputStream stream = new FileInputStream(parts[i]);
+      try {
+        props.load(stream);
+      } finally {
+        IOUtils.closeStream(stream);
+      }
       if (connect(props)) {
         successes++;
       }
@@ -893,6 +915,7 @@ public class Commands {
     if (pass != null) {
       props.setProperty("password", pass);
     }
+
     return connect(props);
   }
 
@@ -939,6 +962,7 @@ public class Commands {
         "javax.jdo.option.ConnectionPassword",
         "ConnectionPassword",
     });
+    String auth = getProperty(props, new String[] {"auth"});
 
     if (url == null || url.length() == 0) {
       return beeLine.error("Property \"url\" is required");
@@ -954,15 +978,25 @@ public class Commands {
     if (username == null) {
       username = beeLine.getConsoleReader().readLine("Enter username for " + url + ": ");
     }
+    props.setProperty("user", username);
     if (password == null) {
       password = beeLine.getConsoleReader().readLine("Enter password for " + url + ": ",
           new Character('*'));
     }
+    props.setProperty("password", password);
+
+    if (auth == null) {
+      auth = beeLine.getOpts().getAuthType();
+    }
+    if (auth != null) {
+      props.setProperty("auth", auth);
+    }
 
     try {
       beeLine.getDatabaseConnections().setConnection(
-          new DatabaseConnection(beeLine, driver, url, username, password));
+          new DatabaseConnection(beeLine, driver, url, props));
       beeLine.getDatabaseConnection().getConnection();
+      beeLine.runInit();
 
       beeLine.setCompletions();
       return true;
@@ -1188,8 +1222,8 @@ public class Commands {
     } catch (Exception e) {
       beeLine.handleException(e);
     }
-    beeLine.output(beeLine.loc("record-closed", beeLine.getRecordOutputFile()));
     beeLine.setRecordOutputFile(null);
+    beeLine.output(beeLine.loc("record-closed", beeLine.getRecordOutputFile()));
     return true;
   }
 
@@ -1208,8 +1242,9 @@ public class Commands {
     }
 
     try {
-      beeLine.setRecordOutputFile(new OutputFile(parts[1]));
-      beeLine.output(beeLine.loc("record-started", beeLine.getRecordOutputFile()));
+      OutputFile recordOutput = new OutputFile(parts[1]);
+      beeLine.output(beeLine.loc("record-started", recordOutput));
+      beeLine.setRecordOutputFile(recordOutput);
       return true;
     } catch (Exception e) {
       return beeLine.error(e);

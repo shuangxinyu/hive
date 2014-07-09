@@ -22,10 +22,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluator;
+import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluatorFactory;
 import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
 import org.apache.hadoop.hive.ql.exec.Operator;
+import org.apache.hadoop.hive.ql.exec.UDF;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDFBridge;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
+import org.apache.hadoop.util.ReflectionUtils;
 
 public class ExprNodeDescUtils {
 
@@ -66,9 +74,9 @@ public class ExprNodeDescUtils {
         }
         children.add(child);
       }
-      // duplicate function with possibily replaced children
+      // duplicate function with possibly replaced children
       ExprNodeGenericFuncDesc clone = (ExprNodeGenericFuncDesc) func.clone();
-      clone.setChildExprs(children);
+      clone.setChildren(children);
       return clone;
     }
     // constant or null, just return it
@@ -94,7 +102,7 @@ public class ExprNodeDescUtils {
   /**
    * bind two predicates by AND op
    */
-  public static ExprNodeDesc mergePredicates(ExprNodeDesc prev, ExprNodeDesc next) {
+  public static ExprNodeGenericFuncDesc mergePredicates(ExprNodeDesc prev, ExprNodeDesc next) {
     List<ExprNodeDesc> children = new ArrayList<ExprNodeDesc>(2);
     children.add(prev);
     children.add(next);
@@ -156,7 +164,7 @@ public class ExprNodeDescUtils {
   }
 
   /**
-   * Return false if the expression has any non determinitic function
+   * Return false if the expression has any non deterministic function
    */
   public static boolean isDeterministic(ExprNodeDesc desc) {
     if (desc instanceof ExprNodeGenericFuncDesc) {
@@ -174,6 +182,14 @@ public class ExprNodeDescUtils {
     return true;
   }
 
+  public static ArrayList<ExprNodeDesc> clone(List<ExprNodeDesc> sources) {
+    ArrayList<ExprNodeDesc> result = new ArrayList<ExprNodeDesc>();
+    for (ExprNodeDesc expr : sources) {
+      result.add(expr.clone());
+    }
+    return result;
+  }
+
   /**
    * Convert expressions in current operator to those in terminal operator, which
    * is an ancestor of current or null (back to top operator).
@@ -187,23 +203,24 @@ public class ExprNodeDescUtils {
     return result;
   }
 
-  private static ExprNodeDesc backtrack(ExprNodeDesc source, Operator<?> current,
+  public static ExprNodeDesc backtrack(ExprNodeDesc source, Operator<?> current,
       Operator<?> terminal) throws SemanticException {
-    if (current == null || current == terminal) {
+    Operator<?> parent = getSingleParent(current, terminal);
+    if (parent == null) {
       return source;
     }
     if (source instanceof ExprNodeGenericFuncDesc) {
       // all children expression should be resolved
       ExprNodeGenericFuncDesc function = (ExprNodeGenericFuncDesc) source.clone();
-      function.setChildExprs(backtrack(function.getChildren(), current, terminal));
+      function.setChildren(backtrack(function.getChildren(), current, terminal));
       return function;
     }
     if (source instanceof ExprNodeColumnDesc) {
       ExprNodeColumnDesc column = (ExprNodeColumnDesc) source;
-      return backtrack(column, current, terminal);
+      return backtrack(column, parent, terminal);
     }
     if (source instanceof ExprNodeFieldDesc) {
-      // field epression should be resolved
+      // field expression should be resolved
       ExprNodeFieldDesc field = (ExprNodeFieldDesc) source.clone();
       field.setDesc(backtrack(field.getDesc(), current, terminal));
       return field;
@@ -215,20 +232,19 @@ public class ExprNodeDescUtils {
   // Resolve column expression to input expression by using expression mapping in current operator
   private static ExprNodeDesc backtrack(ExprNodeColumnDesc column, Operator<?> current,
       Operator<?> terminal) throws SemanticException {
-    if (current == null || current == terminal) {
-      return column;
-    }
-    Operator<?> parent = getSingleParent(current, terminal);
     Map<String, ExprNodeDesc> mapping = current.getColumnExprMap();
-    if (mapping == null || !mapping.containsKey(column.getColumn())) {
-      return backtrack(column, parent, terminal);  // forward
+    if (mapping == null) {
+      return backtrack((ExprNodeDesc)column, current, terminal);
     }
     ExprNodeDesc mapped = mapping.get(column.getColumn());
-    return backtrack(mapped, parent, terminal);    // forward with resolved expr
+    return mapped == null ? null : backtrack(mapped, current, terminal);
   }
 
   public static Operator<?> getSingleParent(Operator<?> current, Operator<?> terminal)
       throws SemanticException {
+    if (current == terminal) {
+      return null;
+    }
     List<Operator<?>> parents = current.getParentOperators();
     if (parents == null || parents.isEmpty()) {
       if (terminal != null) {
@@ -236,9 +252,125 @@ public class ExprNodeDescUtils {
       }
       return null;
     }
-    if (current.getParentOperators().size() > 1) {
-      throw new SemanticException("Met multiple parent operators");
+    if (parents.size() == 1) {
+      return parents.get(0);
     }
-    return parents.get(0);
+    if (terminal != null && parents.contains(terminal)) {
+      return terminal;
+    }
+    throw new SemanticException("Met multiple parent operators");
+  }
+
+  public static ExprNodeDesc[] extractComparePair(ExprNodeDesc expr1, ExprNodeDesc expr2) {
+    expr1 = extractConstant(expr1);
+    expr2 = extractConstant(expr2);
+    if (expr1 instanceof ExprNodeColumnDesc && expr2 instanceof ExprNodeConstantDesc) {
+      return new ExprNodeDesc[] {expr1, expr2};
+    }
+    if (expr1 instanceof ExprNodeConstantDesc && expr2 instanceof ExprNodeColumnDesc) {
+      return new ExprNodeDesc[] {expr1, expr2};
+    }
+    // handles cases where the query has a predicate "column-name=constant"
+    if (expr1 instanceof ExprNodeFieldDesc && expr2 instanceof ExprNodeConstantDesc) {
+      ExprNodeColumnDesc columnDesc = extractColumn(expr1);
+      return columnDesc != null ? new ExprNodeDesc[] {columnDesc, expr2, expr1} : null;
+    }
+    // handles cases where the query has a predicate "constant=column-name"
+    if (expr1 instanceof ExprNodeConstantDesc && expr2 instanceof ExprNodeFieldDesc) {
+      ExprNodeColumnDesc columnDesc = extractColumn(expr2);
+      return columnDesc != null ? new ExprNodeDesc[] {expr1, columnDesc, expr2} : null;
+    }
+    // todo: constant op constant
+    return null;
+  }
+
+  /**
+   * Extract fields from the given {@link ExprNodeFieldDesc node descriptor}
+   * */
+  public static String[] extractFields(ExprNodeFieldDesc expr) {
+    return extractFields(expr, new ArrayList<String>()).toArray(new String[0]);
+  }
+
+  /*
+   * Recursively extract fields from ExprNodeDesc. Deeply nested structs can have multiple levels of
+   * fields in them
+   */
+  private static List<String> extractFields(ExprNodeDesc expr, List<String> fields) {
+    if (expr instanceof ExprNodeFieldDesc) {
+      ExprNodeFieldDesc field = (ExprNodeFieldDesc)expr;
+      fields.add(field.getFieldName());
+      return extractFields(field.getDesc(), fields);
+    }
+    if (expr instanceof ExprNodeColumnDesc) {
+      return fields;
+    }
+    throw new IllegalStateException(
+        "Unexpected exception while extracting fields from ExprNodeDesc");
+  }
+
+  /*
+   * Extract column from the given ExprNodeDesc
+   */
+  private static ExprNodeColumnDesc extractColumn(ExprNodeDesc expr) {
+    if (expr instanceof ExprNodeColumnDesc) {
+      return (ExprNodeColumnDesc)expr;
+    }
+    if (expr instanceof ExprNodeFieldDesc) {
+      return extractColumn(((ExprNodeFieldDesc)expr).getDesc());
+    }
+    return null;
+  }
+
+  // from IndexPredicateAnalyzer
+  private static ExprNodeDesc extractConstant(ExprNodeDesc expr) {
+    if (!(expr instanceof ExprNodeGenericFuncDesc)) {
+      return expr;
+    }
+    ExprNodeConstantDesc folded = foldConstant(((ExprNodeGenericFuncDesc) expr));
+    return folded == null ? expr : folded;
+  }
+
+  private static ExprNodeConstantDesc foldConstant(ExprNodeGenericFuncDesc func) {
+    GenericUDF udf = func.getGenericUDF();
+    if (!FunctionRegistry.isDeterministic(udf) || FunctionRegistry.isStateful(udf)) {
+      return null;
+    }
+    try {
+      // If the UDF depends on any external resources, we can't fold because the
+      // resources may not be available at compile time.
+      if (udf instanceof GenericUDFBridge) {
+        UDF internal = ReflectionUtils.newInstance(((GenericUDFBridge) udf).getUdfClass(), null);
+        if (internal.getRequiredFiles() != null || internal.getRequiredJars() != null) {
+          return null;
+        }
+      } else {
+        if (udf.getRequiredFiles() != null || udf.getRequiredJars() != null) {
+          return null;
+        }
+      }
+
+      if (func.getChildren() != null) {
+        for (ExprNodeDesc child : func.getChildren()) {
+          if (child instanceof ExprNodeConstantDesc) {
+            continue;
+          }
+          if (child instanceof ExprNodeGenericFuncDesc) {
+            if (foldConstant((ExprNodeGenericFuncDesc) child) != null) {
+              continue;
+            }
+          }
+          return null;
+        }
+      }
+      ExprNodeEvaluator evaluator = ExprNodeEvaluatorFactory.get(func);
+      ObjectInspector output = evaluator.initialize(null);
+
+      Object constant = evaluator.evaluate(null);
+      Object java = ObjectInspectorUtils.copyToStandardJavaObject(constant, output);
+
+      return new ExprNodeConstantDesc(java);
+    } catch (Exception e) {
+      return null;
+    }
   }
 }

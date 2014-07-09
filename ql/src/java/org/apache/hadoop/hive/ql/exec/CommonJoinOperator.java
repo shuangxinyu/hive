@@ -93,7 +93,7 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
   protected transient ArrayList<Object>[] dummyObj;
 
   // empty rows for each table
-  protected transient RowContainer<ArrayList<Object>>[] dummyObjVectors;
+  protected transient RowContainer<List<Object>>[] dummyObjVectors;
 
   protected transient int totalSz; // total size of the composite object
 
@@ -108,11 +108,11 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
   // input is too large
   // to fit in memory
 
-  AbstractRowContainer<ArrayList<Object>>[] storage; // map b/w table alias
+  AbstractRowContainer<List<Object>>[] storage; // map b/w table alias
   // to RowContainer
   int joinEmitInterval = -1;
   int joinCacheSize = 0;
-  int nextSz = 0;
+  long nextSz = 0;
   transient Byte lastAlias = null;
 
   transient boolean handleSkewJoin = false;
@@ -132,8 +132,6 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
     this.nextSz = clone.nextSz;
     this.childOperators = clone.childOperators;
     this.parentOperators = clone.parentOperators;
-    this.counterNames = clone.counterNames;
-    this.counterNameToEnum = clone.counterNameToEnum;
     this.done = clone.done;
     this.operatorId = clone.operatorId;
     this.storage = clone.storage;
@@ -141,12 +139,9 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
     this.conf = clone.getConf();
     this.setSchema(clone.getSchema());
     this.alias = clone.alias;
-    this.beginTime = clone.beginTime;
-    this.inputRows = clone.inputRows;
     this.childOperatorsArray = clone.childOperatorsArray;
     this.childOperatorsTag = clone.childOperatorsTag;
     this.colExprMap = clone.colExprMap;
-    this.counters = clone.counters;
     this.dummyObj = clone.dummyObj;
     this.dummyObjVectors = clone.dummyObjVectors;
     this.forwardCache = clone.forwardCache;
@@ -155,7 +150,6 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
     this.hconf = clone.hconf;
     this.id = clone.id;
     this.inputObjInspectors = clone.inputObjInspectors;
-    this.inputRows = clone.inputRows;
     this.noOuterJoin = clone.noOuterJoin;
     this.numAliases = clone.numAliases;
     this.operatorId = clone.operatorId;
@@ -166,14 +160,12 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
     this.joinFilterObjectInspectors = clone.joinFilterObjectInspectors;
   }
 
-
-  protected static <T extends JoinDesc> ObjectInspector getJoinOutputObjectInspector(
-      Byte[] order, List<ObjectInspector>[] aliasToObjectInspectors,
-      T conf) {
+  private <T extends JoinDesc> ObjectInspector getJoinOutputObjectInspector(
+      Byte[] order, List<ObjectInspector>[] aliasToObjectInspectors, T conf) {
     List<ObjectInspector> structFieldObjectInspectors = new ArrayList<ObjectInspector>();
     for (Byte alias : order) {
-      List<ObjectInspector> oiList = aliasToObjectInspectors[alias];
-      if (oiList != null) {
+      List<ObjectInspector> oiList = getValueObjectInspectors(alias, aliasToObjectInspectors);
+      if (oiList != null && !oiList.isEmpty()) {
         structFieldObjectInspectors.addAll(oiList);
       }
     }
@@ -184,7 +176,12 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
     return joinOutputObjectInspector;
   }
 
-  Configuration hconf;
+  protected List<ObjectInspector> getValueObjectInspectors(
+      byte alias, List<ObjectInspector>[] aliasToObjectInspectors) {
+    return aliasToObjectInspectors[alias];
+  }
+
+  protected Configuration hconf;
 
   @Override
   @SuppressWarnings("unchecked")
@@ -274,16 +271,16 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
       }
       dummyObj[pos] = nr;
       // there should be only 1 dummy object in the RowContainer
-      RowContainer<ArrayList<Object>> values = JoinUtil.getRowContainer(hconf,
+      RowContainer<List<Object>> values = JoinUtil.getRowContainer(hconf,
           rowContainerStandardObjectInspectors[pos],
           alias, 1, spillTableDesc, conf, !hasFilter(pos), reporter);
 
-      values.add(dummyObj[pos]);
+      values.addRow(dummyObj[pos]);
       dummyObjVectors[pos] = values;
 
       // if serde is null, the input doesn't need to be spilled out
       // e.g., the output columns does not contains the input table
-      RowContainer rc = JoinUtil.getRowContainer(hconf,
+      RowContainer<List<Object>> rc = JoinUtil.getRowContainer(hconf,
           rowContainerStandardObjectInspectors[pos],
           alias, joinCacheSize, spillTableDesc, conf, !hasFilter(pos), reporter);
       storage[pos] = rc;
@@ -328,12 +325,13 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
   public void startGroup() throws HiveException {
     LOG.trace("Join: Starting new group");
     newGroupStarted = true;
-    for (AbstractRowContainer<ArrayList<Object>> alw : storage) {
-      alw.clear();
+    for (AbstractRowContainer<List<Object>> alw : storage) {
+      alw.clearRows();
     }
+    super.startGroup();
   }
 
-  protected int getNextSize(int sz) {
+  protected long getNextSize(long sz) {
     // A very simple counter to keep track of join entries for a key
     if (sz >= 100000) {
       return sz + 100000;
@@ -360,35 +358,55 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
   // filter tags for objects
   protected transient short[] filterTags;
 
-  // ANDed value of all filter tags in current join group
-  // if any of values passes on outer join alias (which makes zero for the tag alias),
-  // it means there exists a pair for it, and no need to check outer join (just do inner join)
-  //
-  // for example, with table a, b something like,
-  //   a, b = 100, 10 | 100, 20 | 100, 30
-  //
-  // the query "a FOJ b ON a.k=b.k AND a.v>0 AND b.v>20" makes values with tag
-  //
-  //   a = 100, 10, 00000010 | 100, 20, 00000010 | 100, 30, 00000010 : 0/1 for 'b' (alias 1)
-  //   b = 100, 10, 00000001 | 100, 20, 00000001 | 100, 30, 00000000 : 0/1 for 'a' (alias 0)
-  //
-  // which makes aliasFilterTags for a = 00000010, for b = 00000000
-  //
-  // for LO, b = 0000000(0) means there is a pair object(s) in 'b' (has no 'a'-null case)
-  // for RO, a = 000000(1)0 means there is no pair object in 'a' (has null-'b' case)
-  //
-  // result : 100, 10 + 100, 30 | 100, 20 + 100, 30 | 100, 30 + 100, 30 |
-  //          N       + 100, 10 | N       + 100, 20
-  //
+  /**
+   * On filterTags
+   *
+   * ANDed value of all filter tags in current join group
+   * if any of values passes on outer join alias (which makes zero for the tag alias),
+   * it means there exists a pair for it and safely regarded as a inner join
+   *
+   * for example, with table a, b something like,
+   *   a = 100, 10 | 100, 20 | 100, 30
+   *   b = 100, 10 | 100, 20 | 100, 30
+   *
+   * the query "a FO b ON a.k=b.k AND a.v>10 AND b.v>30" makes filter map
+   *   0(a) = [1(b),1] : a.v>10
+   *   1(b) = [0(a),1] : b.v>30
+   *
+   * for filtered rows in a (100,10) create a-NULL
+   * for filtered rows in b (100,10) (100,20) (100,30) create NULL-b
+   *
+   * with 0(a) = [1(b),1] : a.v>10
+   *   100, 10 = 00000010 (filtered)
+   *   100, 20 = 00000000 (valid)
+   *   100, 30 = 00000000 (valid)
+   * -------------------------
+   *       sum = 00000000 : for valid rows in b, there is at least one pair in a
+   *
+   * with 1(b) = [0(a),1] : b.v>30
+   *   100, 10 = 00000001 (filtered)
+   *   100, 20 = 00000001 (filtered)
+   *   100, 30 = 00000001 (filtered)
+   * -------------------------
+   *       sum = 00000001 : for valid rows in a (100,20) (100,30), there is no pair in b
+   *
+   * result :
+   *   100, 10 :   N,  N
+   *     N,  N : 100, 10
+   *     N,  N : 100, 20
+   *     N,  N : 100, 30
+   *   100, 20 :   N,  N
+   *   100, 30 :   N,  N
+   */
   protected transient short[] aliasFilterTags;
 
   // all evaluation should be processed here for valid aliasFilterTags
   //
   // for MapJoin, filter tag is pre-calculated in MapredLocalTask and stored with value.
-  // when reading the hashtable, MapJoinObjectValue calcuates alias filter and provide it to join
-  protected ArrayList<Object> getFilteredValue(byte alias, Object row) throws HiveException {
+  // when reading the hashtable, MapJoinObjectValue calculates alias filter and provide it to join
+  protected List<Object> getFilteredValue(byte alias, Object row) throws HiveException {
     boolean hasFilter = hasFilter(alias);
-    ArrayList<Object> nr = JoinUtil.computeValues(row, joinValues[alias],
+    List<Object> nr = JoinUtil.computeValues(row, joinValues[alias],
         joinValuesObjectInspectors[alias], hasFilter);
     if (hasFilter) {
       short filterTag = JoinUtil.isFiltered(row, joinFilters[alias],
@@ -413,7 +431,7 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
       }
     }
     if (forward) {
-      forward(forwardCache, null);
+      internalForward(forwardCache, outputObjInspector);
       countAfterReport = 0;
     }
   }
@@ -422,8 +440,8 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
   private void genJoinObject() throws HiveException {
     boolean rightFirst = true;
     boolean hasFilter = hasFilter(order[0]);
-    AbstractRowContainer<ArrayList<Object>> aliasRes = storage[order[0]];
-    for (List<Object> rightObj = aliasRes.first(); rightObj != null; rightObj = aliasRes.next()) {
+    AbstractRowContainer.RowIterator<List<Object>> iter = storage[order[0]].rowIter();
+    for (List<Object> rightObj = iter.first(); rightObj != null; rightObj = iter.next()) {
       boolean rightNull = rightObj == dummyObj[0];
       if (hasFilter) {
         filterTags[0] = getFilterTag(rightObj);
@@ -450,15 +468,16 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
       int right = joinCond.getRight();
 
       // search for match in the rhs table
-      AbstractRowContainer<ArrayList<Object>> aliasRes = storage[order[aliasNum]];
+      AbstractRowContainer<List<Object>> aliasRes = storage[order[aliasNum]];
 
       boolean done = false;
       boolean loopAgain = false;
       boolean tryLOForFO = type == JoinDesc.FULL_OUTER_JOIN;
 
       boolean rightFirst = true;
-      for (List<Object> rightObj = aliasRes.first(); !done && rightObj != null;
-           rightObj = loopAgain ? rightObj : aliasRes.next(), rightFirst = loopAgain = false) {
+      AbstractRowContainer.RowIterator<List<Object>> iter = aliasRes.rowIter();
+      for (List<Object> rightObj = iter.first(); !done && rightObj != null;
+           rightObj = loopAgain ? rightObj : iter.next(), rightFirst = loopAgain = false) {
         System.arraycopy(prevSkip, 0, skip, 0, prevSkip.length);
 
         boolean rightNull = rightObj == dummyObj[aliasNum];
@@ -618,17 +637,21 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
     checkAndGenObject();
   }
 
+  protected void internalForward(Object row, ObjectInspector outputOI) throws HiveException {
+    forward(row, outputOI);
+  }
+
   private void genUniqueJoinObject(int aliasNum, int forwardCachePos)
       throws HiveException {
-    AbstractRowContainer<ArrayList<Object>> alias = storage[order[aliasNum]];
-    for (ArrayList<Object> row = alias.first(); row != null; row = alias.next()) {
+    AbstractRowContainer.RowIterator<List<Object>> iter = storage[order[aliasNum]].rowIter();
+    for (List<Object> row = iter.first(); row != null; row = iter.next()) {
       int sz = joinValues[order[aliasNum]].size();
       int p = forwardCachePos;
       for (int j = 0; j < sz; j++) {
         forwardCache[p++] = row.get(j);
       }
       if (aliasNum == numAliases - 1) {
-        forward(forwardCache, outputObjInspector);
+        internalForward(forwardCache, outputObjInspector);
         countAfterReport = 0;
       } else {
         genUniqueJoinObject(aliasNum + 1, p);
@@ -641,13 +664,13 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
     int p = 0;
     for (int i = 0; i < numAliases; i++) {
       int sz = joinValues[order[i]].size();
-      ArrayList<Object> obj = storage[order[i]].first();
+      List<Object> obj = storage[order[i]].rowIter().first();
       for (int j = 0; j < sz; j++) {
         forwardCache[p++] = obj.get(j);
       }
     }
 
-    forward(forwardCache, outputObjInspector);
+    internalForward(forwardCache, outputObjInspector);
     countAfterReport = 0;
   }
 
@@ -663,14 +686,14 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
       boolean allOne = true;
       for (int i = 0; i < numAliases; i++) {
         Byte alias = order[i];
-        AbstractRowContainer<ArrayList<Object>> alw = storage[alias];
+        AbstractRowContainer<List<Object>> alw = storage[alias];
 
-        if (alw.size() != 1) {
+        if (alw.rowCount() != 1) {
           allOne = false;
         }
 
-        if (alw.size() == 0) {
-          alw.add(dummyObj[i]);
+        if (alw.rowCount() == 0) {
+          alw.addRow(dummyObj[i]);
           hasNulls = true;
         } else if (condn[i].getPreserved()) {
           preserve = true;
@@ -696,27 +719,28 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
       boolean hasEmpty = false;
       for (int i = 0; i < numAliases; i++) {
         Byte alias = order[i];
-        AbstractRowContainer<ArrayList<Object>> alw = storage[alias];
+        AbstractRowContainer<List<Object>> alw = storage[alias];
 
         if (noOuterJoin) {
-          if (alw.size() == 0) {
+          if (alw.rowCount() == 0) {
             LOG.trace("No data for alias=" + i);
             return;
-          } else if (alw.size() > 1) {
+          } else if (alw.rowCount() > 1) {
             mayHasMoreThanOne = true;
           }
         } else {
-          if (alw.size() == 0) {
+          if (alw.rowCount() == 0) {
             hasEmpty = true;
-            alw.add(dummyObj[i]);
-          } else if (!hasEmpty && alw.size() == 1) {
-            if (hasAnyFiltered(alias, alw.first())) {
+            alw.addRow(dummyObj[i]);
+          } else if (!hasEmpty && alw.rowCount() == 1) {
+            if (hasAnyFiltered(alias, alw.rowIter().first())) {
               hasEmpty = true;
             }
           } else {
             mayHasMoreThanOne = true;
             if (!hasEmpty) {
-              for (ArrayList<Object> row = alw.first(); row != null; row = alw.next()) {
+              AbstractRowContainer.RowIterator<List<Object>> iter = alw.rowIter();
+              for (List<Object> row = iter.first(); row != null; row = iter.next()) {
                 reportProgress();
                 if (hasAnyFiltered(alias, row)) {
                   hasEmpty = true;
@@ -763,9 +787,9 @@ public abstract class CommonJoinOperator<T extends JoinDesc> extends
   @Override
   public void closeOp(boolean abort) throws HiveException {
     LOG.trace("Join Op close");
-    for (AbstractRowContainer<ArrayList<Object>> alw : storage) {
+    for (AbstractRowContainer<List<Object>> alw : storage) {
       if (alw != null) {
-        alw.clear(); // clean up the temp files
+        alw.clearRows(); // clean up the temp files
       }
     }
     Arrays.fill(storage, null);

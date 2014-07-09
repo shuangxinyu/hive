@@ -18,15 +18,31 @@
 
 package org.apache.hadoop.hive.common;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FileUtil;
+import org.apache.hadoop.fs.FsShell;
+import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.fs.permission.FsAction;
+import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.shims.HadoopShims;
+import org.apache.hadoop.hive.shims.HadoopShims.HdfsFileStatus;
+import org.apache.hadoop.hive.shims.ShimLoader;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.Shell;
 
 
@@ -34,6 +50,19 @@ import org.apache.hadoop.util.Shell;
  * Collection of file manipulation utilities common across Hive.
  */
 public final class FileUtils {
+  private static final Log LOG = LogFactory.getLog(FileUtils.class.getName());
+
+  /**
+   * Accept all paths.
+   */
+  private static class AcceptAllPathFilter implements PathFilter {
+    @Override
+    public boolean accept(Path path) {
+      return true;
+    }
+  }
+
+  private static final PathFilter allPathFilter = new AcceptAllPathFilter();
 
   /**
    * Variant of Path.makeQualified that qualifies the input path against the default file system
@@ -289,7 +318,14 @@ public final class FileUtils {
       List<FileStatus> results) throws IOException {
 
     if (fileStatus.isDir()) {
-      for (FileStatus stat : fs.listStatus(fileStatus.getPath())) {
+      for (FileStatus stat : fs.listStatus(fileStatus.getPath(), new PathFilter() {
+
+        @Override
+        public boolean accept(Path p) {
+          String name = p.getName();
+          return !name.startsWith("_") && !name.startsWith(".");
+        }
+      })) {
         listStatusRecursively(fs, stat, results);
       }
     } else {
@@ -297,4 +333,266 @@ public final class FileUtils {
     }
   }
 
+  /**
+   * Find the parent of path that exists, if path does not exist
+   *
+   * @param fs
+   *          file system
+   * @param path
+   * @return the argument path if it exists or a parent path exists. Returns
+   *         NULL root is only parent that exists
+   * @throws IOException
+   */
+  public static Path getPathOrParentThatExists(FileSystem fs, Path path) throws IOException {
+    if (!fs.exists(path)) {
+      Path parentPath = path.getParent();
+      return getPathOrParentThatExists(fs, parentPath);
+    }
+    return path;
+  }
+
+  /**
+   * Check if the given FileStatus indicates that the action is allowed for
+   * userName. It checks the group and other permissions also to determine this.
+   *
+   * @param userName
+   * @param fsStatus
+   * @param action
+   * @return true if it is writable for userName
+   */
+  public static boolean isActionPermittedForUser(String userName, FileStatus fsStatus, FsAction action) {
+    FsPermission permissions = fsStatus.getPermission();
+    // check user perm
+    if (fsStatus.getOwner().equals(userName)
+        && permissions.getUserAction().implies(action)) {
+      return true;
+    }
+    // check other perm
+    if (permissions.getOtherAction().implies(action)) {
+      return true;
+    }
+    // check group perm after ensuring user belongs to the file owner group
+    String fileGroup = fsStatus.getGroup();
+    String[] userGroups = UserGroupInformation.createRemoteUser(userName).getGroupNames();
+    for (String group : userGroups) {
+      if (group.equals(fileGroup)) {
+        // user belongs to the file group
+        return permissions.getGroupAction().implies(action);
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if user userName has permissions to perform the given FsAction action
+   * on all files under the file whose FileStatus fileStatus is provided
+   *
+   * @param fs
+   * @param fileStatus
+   * @param userName
+   * @param action
+   * @return
+   * @throws IOException
+   */
+  public static boolean isActionPermittedForFileHierarchy(FileSystem fs, FileStatus fileStatus,
+      String userName, FsAction action) throws IOException {
+    boolean isDir = fileStatus.isDir();
+
+    FsAction dirActionNeeded = action;
+    if (isDir) {
+      // for dirs user needs execute privileges as well
+      dirActionNeeded.and(FsAction.EXECUTE);
+    }
+    if (!isActionPermittedForUser(userName, fileStatus, dirActionNeeded)) {
+      return false;
+    }
+
+    if (!isDir) {
+      // no sub dirs to be checked
+      return true;
+    }
+    // check all children
+    FileStatus[] childStatuses = fs.listStatus(fileStatus.getPath());
+    for (FileStatus childStatus : childStatuses) {
+      // check children recursively
+      if (!isActionPermittedForFileHierarchy(fs, childStatus, userName, action)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * A best effort attempt to determine if if the file is a local file
+   * @param conf
+   * @param fileName
+   * @return true if it was successfully able to determine that it is a local file
+   */
+  public static boolean isLocalFile(HiveConf conf, String fileName) {
+    try {
+      // do best effor to determine if this is a local file
+      FileSystem fsForFile = FileSystem.get(new URI(fileName), conf);
+      return LocalFileSystem.class.isInstance(fsForFile);
+    } catch (URISyntaxException e) {
+      LOG.warn("Unable to create URI from " + fileName, e);
+    } catch (IOException e) {
+      LOG.warn("Unable to get FileSystem for " + fileName, e);
+    }
+    return false;
+  }
+
+  public static boolean isOwnerOfFileHierarchy(FileSystem fs, FileStatus fileStatus, String userName)
+      throws IOException {
+    if (!fileStatus.getOwner().equals(userName)) {
+      return false;
+    }
+
+    if (!fileStatus.isDir()) {
+      // no sub dirs to be checked
+      return true;
+    }
+    // check all children
+    FileStatus[] childStatuses = fs.listStatus(fileStatus.getPath());
+    for (FileStatus childStatus : childStatuses) {
+      // check children recursively
+      if (!isOwnerOfFileHierarchy(fs, childStatus, userName)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Creates the directory and all necessary parent directories.
+   * @param fs FileSystem to use
+   * @param f path to create.
+   * @param inheritPerms whether directory inherits the permission of the last-existing parent path
+   * @param conf Hive configuration
+   * @return true if directory created successfully.  False otherwise, including if it exists.
+   * @throws IOException exception in creating the directory
+   */
+  public static boolean mkdir(FileSystem fs, Path f, boolean inheritPerms, Configuration conf) throws IOException {
+    LOG.info("Creating directory if it doesn't exist: " + f);
+    if (!inheritPerms) {
+      //just create the directory
+      return fs.mkdirs(f);
+    } else {
+      //Check if the directory already exists. We want to change the permission
+      //to that of the parent directory only for newly created directories.
+      try {
+        return fs.getFileStatus(f).isDir();
+      } catch (FileNotFoundException ignore) {
+      }
+      //inherit perms: need to find last existing parent path, and apply its permission on entire subtree.
+      Path lastExistingParent = f;
+      Path firstNonExistentParent = null;
+      while (!fs.exists(lastExistingParent)) {
+        firstNonExistentParent = lastExistingParent;
+        lastExistingParent = lastExistingParent.getParent();
+      }
+      boolean success = fs.mkdirs(f);
+      if (!success) {
+        return false;
+      } else {
+        HadoopShims shim = ShimLoader.getHadoopShims();
+        HdfsFileStatus fullFileStatus = shim.getFullFileStatus(conf, fs, lastExistingParent);
+        try {
+          //set on the entire subtree
+          shim.setFullFileStatus(conf, fullFileStatus, fs, firstNonExistentParent);
+        } catch (Exception e) {
+          LOG.warn("Error setting permissions of " + firstNonExistentParent, e);
+        }
+        return true;
+      }
+    }
+  }
+
+  /**
+   * Copies files between filesystems.
+   */
+  public static boolean copy(FileSystem srcFS, Path src,
+    FileSystem dstFS, Path dst,
+    boolean deleteSource,
+    boolean overwrite,
+    HiveConf conf) throws IOException {
+    boolean copied = FileUtil.copy(srcFS, src, dstFS, dst, deleteSource, overwrite, conf);
+    boolean inheritPerms = conf.getBoolVar(HiveConf.ConfVars.HIVE_WAREHOUSE_SUBDIR_INHERIT_PERMS);
+    if (copied && inheritPerms) {
+      HadoopShims shims = ShimLoader.getHadoopShims();
+      HdfsFileStatus fullFileStatus = shims.getFullFileStatus(conf, dstFS, dst);
+      try {
+        shims.setFullFileStatus(conf, fullFileStatus, dstFS, dst);
+      } catch (Exception e) {
+        LOG.warn("Error setting permissions or group of " + dst, e);
+      }
+    }
+    return copied;
+  }
+
+  /**
+   * Deletes all files under a directory, sending them to the trash.  Leaves the directory as is.
+   * @param fs FileSystem to use
+   * @param f path of directory
+   * @param conf hive configuration
+   * @return true if deletion successful
+   * @throws FileNotFoundException
+   * @throws IOException
+   */
+  public static boolean trashFilesUnderDir(FileSystem fs, Path f, Configuration conf) throws FileNotFoundException, IOException {
+    FileStatus[] statuses = fs.listStatus(f, allPathFilter);
+    boolean result = true;
+    for (FileStatus status : statuses) {
+      result = result & moveToTrash(fs, status.getPath(), conf);
+    }
+    return result;
+  }
+
+  /**
+   * Move a particular file or directory to the trash.
+   * @param fs FileSystem to use
+   * @param f path of file or directory to move to trash.
+   * @param conf
+   * @return true if move successful
+   * @throws IOException
+   */
+  public static boolean moveToTrash(FileSystem fs, Path f, Configuration conf) throws IOException {
+    LOG.info("deleting  " + f);
+    HadoopShims hadoopShim = ShimLoader.getHadoopShims();
+
+    if (hadoopShim.moveToAppropriateTrash(fs, f, conf)) {
+      LOG.info("Moved to trash: " + f);
+      return true;
+    }
+
+    boolean result = fs.delete(f, true);
+    if (!result) {
+      LOG.error("Failed to delete " + f);
+    }
+    return result;
+  }
+
+  public static boolean renameWithPerms(FileSystem fs, Path sourcePath,
+                               Path destPath, boolean inheritPerms,
+                               Configuration conf) throws IOException {
+    LOG.info("Renaming " + sourcePath + " to " + destPath);
+    if (!inheritPerms) {
+      //just rename the directory
+      return fs.rename(sourcePath, destPath);
+    } else {
+      //rename the directory
+      if (fs.rename(sourcePath, destPath)) {
+        HadoopShims shims = ShimLoader.getHadoopShims();
+        HdfsFileStatus fullFileStatus = shims.getFullFileStatus(conf, fs, destPath.getParent());
+        try {
+          shims.setFullFileStatus(conf, fullFileStatus, fs, destPath);
+        } catch (Exception e) {
+          LOG.warn("Error setting permissions or group of " + destPath, e);
+        }
+
+        return true;
+      }
+
+      return false;
+    }
+  }
 }

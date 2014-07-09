@@ -18,7 +18,13 @@ namespace apache { namespace hive { namespace service { namespace cli { namespac
 
 struct TProtocolVersion {
   enum type {
-    HIVE_CLI_SERVICE_PROTOCOL_V1 = 0
+    HIVE_CLI_SERVICE_PROTOCOL_V1 = 0,
+    HIVE_CLI_SERVICE_PROTOCOL_V2 = 1,
+    HIVE_CLI_SERVICE_PROTOCOL_V3 = 2,
+    HIVE_CLI_SERVICE_PROTOCOL_V4 = 3,
+    HIVE_CLI_SERVICE_PROTOCOL_V5 = 4,
+    HIVE_CLI_SERVICE_PROTOCOL_V6 = 5,
+    HIVE_CLI_SERVICE_PROTOCOL_V7 = 6
   };
 };
 
@@ -41,7 +47,11 @@ struct TTypeId {
     STRUCT_TYPE = 12,
     UNION_TYPE = 13,
     USER_DEFINED_TYPE = 14,
-    DECIMAL_TYPE = 15
+    DECIMAL_TYPE = 15,
+    NULL_TYPE = 16,
+    DATE_TYPE = 17,
+    VARCHAR_TYPE = 18,
+    CHAR_TYPE = 19
   };
 };
 
@@ -67,7 +77,8 @@ struct TOperationState {
     CANCELED_STATE = 3,
     CLOSED_STATE = 4,
     ERROR_STATE = 5,
-    UKNOWN_STATE = 6
+    UKNOWN_STATE = 6,
+    PENDING_STATE = 7
   };
 };
 
@@ -164,12 +175,110 @@ typedef std::string TPattern;
 
 typedef std::string TPatternOrIdentifier;
 
+typedef struct _TTypeQualifierValue__isset {
+  _TTypeQualifierValue__isset() : i32Value(false), stringValue(false) {}
+  bool i32Value;
+  bool stringValue;
+} _TTypeQualifierValue__isset;
+
+class TTypeQualifierValue {
+ public:
+
+  static const char* ascii_fingerprint; // = "A7801670116150C65ACA43E6F679BA79";
+  static const uint8_t binary_fingerprint[16]; // = {0xA7,0x80,0x16,0x70,0x11,0x61,0x50,0xC6,0x5A,0xCA,0x43,0xE6,0xF6,0x79,0xBA,0x79};
+
+  TTypeQualifierValue() : i32Value(0), stringValue() {
+  }
+
+  virtual ~TTypeQualifierValue() throw() {}
+
+  int32_t i32Value;
+  std::string stringValue;
+
+  _TTypeQualifierValue__isset __isset;
+
+  void __set_i32Value(const int32_t val) {
+    i32Value = val;
+    __isset.i32Value = true;
+  }
+
+  void __set_stringValue(const std::string& val) {
+    stringValue = val;
+    __isset.stringValue = true;
+  }
+
+  bool operator == (const TTypeQualifierValue & rhs) const
+  {
+    if (__isset.i32Value != rhs.__isset.i32Value)
+      return false;
+    else if (__isset.i32Value && !(i32Value == rhs.i32Value))
+      return false;
+    if (__isset.stringValue != rhs.__isset.stringValue)
+      return false;
+    else if (__isset.stringValue && !(stringValue == rhs.stringValue))
+      return false;
+    return true;
+  }
+  bool operator != (const TTypeQualifierValue &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TTypeQualifierValue & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TTypeQualifierValue &a, TTypeQualifierValue &b);
+
+
+class TTypeQualifiers {
+ public:
+
+  static const char* ascii_fingerprint; // = "6C72981CFA989214285648FA8C196C47";
+  static const uint8_t binary_fingerprint[16]; // = {0x6C,0x72,0x98,0x1C,0xFA,0x98,0x92,0x14,0x28,0x56,0x48,0xFA,0x8C,0x19,0x6C,0x47};
+
+  TTypeQualifiers() {
+  }
+
+  virtual ~TTypeQualifiers() throw() {}
+
+  std::map<std::string, TTypeQualifierValue>  qualifiers;
+
+  void __set_qualifiers(const std::map<std::string, TTypeQualifierValue> & val) {
+    qualifiers = val;
+  }
+
+  bool operator == (const TTypeQualifiers & rhs) const
+  {
+    if (!(qualifiers == rhs.qualifiers))
+      return false;
+    return true;
+  }
+  bool operator != (const TTypeQualifiers &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TTypeQualifiers & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TTypeQualifiers &a, TTypeQualifiers &b);
+
+typedef struct _TPrimitiveTypeEntry__isset {
+  _TPrimitiveTypeEntry__isset() : typeQualifiers(false) {}
+  bool typeQualifiers;
+} _TPrimitiveTypeEntry__isset;
 
 class TPrimitiveTypeEntry {
  public:
 
-  static const char* ascii_fingerprint; // = "8BBB3D0C3B370CB38F2D1340BB79F0AA";
-  static const uint8_t binary_fingerprint[16]; // = {0x8B,0xBB,0x3D,0x0C,0x3B,0x37,0x0C,0xB3,0x8F,0x2D,0x13,0x40,0xBB,0x79,0xF0,0xAA};
+  static const char* ascii_fingerprint; // = "755674F6A5C8EB47868686AE386FBC1C";
+  static const uint8_t binary_fingerprint[16]; // = {0x75,0x56,0x74,0xF6,0xA5,0xC8,0xEB,0x47,0x86,0x86,0x86,0xAE,0x38,0x6F,0xBC,0x1C};
 
   TPrimitiveTypeEntry() : type((TTypeId::type)0) {
   }
@@ -177,14 +286,26 @@ class TPrimitiveTypeEntry {
   virtual ~TPrimitiveTypeEntry() throw() {}
 
   TTypeId::type type;
+  TTypeQualifiers typeQualifiers;
+
+  _TPrimitiveTypeEntry__isset __isset;
 
   void __set_type(const TTypeId::type val) {
     type = val;
   }
 
+  void __set_typeQualifiers(const TTypeQualifiers& val) {
+    typeQualifiers = val;
+    __isset.typeQualifiers = true;
+  }
+
   bool operator == (const TPrimitiveTypeEntry & rhs) const
   {
     if (!(type == rhs.type))
+      return false;
+    if (__isset.typeQualifiers != rhs.__isset.typeQualifiers)
+      return false;
+    else if (__isset.typeQualifiers && !(typeQualifiers == rhs.typeQualifiers))
       return false;
     return true;
   }
@@ -406,8 +527,8 @@ typedef struct _TTypeEntry__isset {
 class TTypeEntry {
  public:
 
-  static const char* ascii_fingerprint; // = "0C3ACE4054603E2D37B8BFEBA79F4159";
-  static const uint8_t binary_fingerprint[16]; // = {0x0C,0x3A,0xCE,0x40,0x54,0x60,0x3E,0x2D,0x37,0xB8,0xBF,0xEB,0xA7,0x9F,0x41,0x59};
+  static const char* ascii_fingerprint; // = "2FE56D9097E325DAA7E933738C6D325F";
+  static const uint8_t binary_fingerprint[16]; // = {0x2F,0xE5,0x6D,0x90,0x97,0xE3,0x25,0xDA,0xA7,0xE9,0x33,0x73,0x8C,0x6D,0x32,0x5F};
 
   TTypeEntry() {
   }
@@ -480,8 +601,8 @@ void swap(TTypeEntry &a, TTypeEntry &b);
 class TTypeDesc {
  public:
 
-  static const char* ascii_fingerprint; // = "60CA5B8BACFCD38D1D3EC1F0E3F1C36A";
-  static const uint8_t binary_fingerprint[16]; // = {0x60,0xCA,0x5B,0x8B,0xAC,0xFC,0xD3,0x8D,0x1D,0x3E,0xC1,0xF0,0xE3,0xF1,0xC3,0x6A};
+  static const char* ascii_fingerprint; // = "90B3C5A0B73419A84E85E0E48C452AA5";
+  static const uint8_t binary_fingerprint[16]; // = {0x90,0xB3,0xC5,0xA0,0xB7,0x34,0x19,0xA8,0x4E,0x85,0xE0,0xE4,0x8C,0x45,0x2A,0xA5};
 
   TTypeDesc() {
   }
@@ -521,8 +642,8 @@ typedef struct _TColumnDesc__isset {
 class TColumnDesc {
  public:
 
-  static const char* ascii_fingerprint; // = "0DF9A37B81B1EE73D35A0AC01F33A48D";
-  static const uint8_t binary_fingerprint[16]; // = {0x0D,0xF9,0xA3,0x7B,0x81,0xB1,0xEE,0x73,0xD3,0x5A,0x0A,0xC0,0x1F,0x33,0xA4,0x8D};
+  static const char* ascii_fingerprint; // = "EABED9009D5FCABFCA65612069F2A849";
+  static const uint8_t binary_fingerprint[16]; // = {0xEA,0xBE,0xD9,0x00,0x9D,0x5F,0xCA,0xBF,0xCA,0x65,0x61,0x20,0x69,0xF2,0xA8,0x49};
 
   TColumnDesc() : columnName(), position(0), comment() {
   }
@@ -584,8 +705,8 @@ void swap(TColumnDesc &a, TColumnDesc &b);
 class TTableSchema {
  public:
 
-  static const char* ascii_fingerprint; // = "E67E789F1EF836E4B9FC922C788AFDC8";
-  static const uint8_t binary_fingerprint[16]; // = {0xE6,0x7E,0x78,0x9F,0x1E,0xF8,0x36,0xE4,0xB9,0xFC,0x92,0x2C,0x78,0x8A,0xFD,0xC8};
+  static const char* ascii_fingerprint; // = "7A1811E49313E5977107FC667B20E39D";
+  static const uint8_t binary_fingerprint[16]; // = {0x7A,0x18,0x11,0xE4,0x93,0x13,0xE5,0x97,0x71,0x07,0xFC,0x66,0x7B,0x20,0xE3,0x9D};
 
   TTableSchema() {
   }
@@ -939,97 +1060,6 @@ class TStringValue {
 
 void swap(TStringValue &a, TStringValue &b);
 
-typedef struct _TColumn__isset {
-  _TColumn__isset() : boolColumn(false), byteColumn(false), i16Column(false), i32Column(false), i64Column(false), doubleColumn(false), stringColumn(false) {}
-  bool boolColumn;
-  bool byteColumn;
-  bool i16Column;
-  bool i32Column;
-  bool i64Column;
-  bool doubleColumn;
-  bool stringColumn;
-} _TColumn__isset;
-
-class TColumn {
- public:
-
-  static const char* ascii_fingerprint; // = "B39B4E4E565DB31DC891D62FDC3208DC";
-  static const uint8_t binary_fingerprint[16]; // = {0xB3,0x9B,0x4E,0x4E,0x56,0x5D,0xB3,0x1D,0xC8,0x91,0xD6,0x2F,0xDC,0x32,0x08,0xDC};
-
-  TColumn() {
-  }
-
-  virtual ~TColumn() throw() {}
-
-  std::vector<TBoolValue>  boolColumn;
-  std::vector<TByteValue>  byteColumn;
-  std::vector<TI16Value>  i16Column;
-  std::vector<TI32Value>  i32Column;
-  std::vector<TI64Value>  i64Column;
-  std::vector<TDoubleValue>  doubleColumn;
-  std::vector<TStringValue>  stringColumn;
-
-  _TColumn__isset __isset;
-
-  void __set_boolColumn(const std::vector<TBoolValue> & val) {
-    boolColumn = val;
-  }
-
-  void __set_byteColumn(const std::vector<TByteValue> & val) {
-    byteColumn = val;
-  }
-
-  void __set_i16Column(const std::vector<TI16Value> & val) {
-    i16Column = val;
-  }
-
-  void __set_i32Column(const std::vector<TI32Value> & val) {
-    i32Column = val;
-  }
-
-  void __set_i64Column(const std::vector<TI64Value> & val) {
-    i64Column = val;
-  }
-
-  void __set_doubleColumn(const std::vector<TDoubleValue> & val) {
-    doubleColumn = val;
-  }
-
-  void __set_stringColumn(const std::vector<TStringValue> & val) {
-    stringColumn = val;
-  }
-
-  bool operator == (const TColumn & rhs) const
-  {
-    if (!(boolColumn == rhs.boolColumn))
-      return false;
-    if (!(byteColumn == rhs.byteColumn))
-      return false;
-    if (!(i16Column == rhs.i16Column))
-      return false;
-    if (!(i32Column == rhs.i32Column))
-      return false;
-    if (!(i64Column == rhs.i64Column))
-      return false;
-    if (!(doubleColumn == rhs.doubleColumn))
-      return false;
-    if (!(stringColumn == rhs.stringColumn))
-      return false;
-    return true;
-  }
-  bool operator != (const TColumn &rhs) const {
-    return !(*this == rhs);
-  }
-
-  bool operator < (const TColumn & ) const;
-
-  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
-  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
-
-};
-
-void swap(TColumn &a, TColumn &b);
-
 typedef struct _TColumnValue__isset {
   _TColumnValue__isset() : boolVal(false), byteVal(false), i16Val(false), i32Val(false), i64Val(false), doubleVal(false), stringVal(false) {}
   bool boolVal;
@@ -1158,6 +1188,457 @@ class TRow {
 
 void swap(TRow &a, TRow &b);
 
+
+class TBoolColumn {
+ public:
+
+  static const char* ascii_fingerprint; // = "F9058324D96DB7F974D8ACDC01C54219";
+  static const uint8_t binary_fingerprint[16]; // = {0xF9,0x05,0x83,0x24,0xD9,0x6D,0xB7,0xF9,0x74,0xD8,0xAC,0xDC,0x01,0xC5,0x42,0x19};
+
+  TBoolColumn() : nulls() {
+  }
+
+  virtual ~TBoolColumn() throw() {}
+
+  std::vector<bool>  values;
+  std::string nulls;
+
+  void __set_values(const std::vector<bool> & val) {
+    values = val;
+  }
+
+  void __set_nulls(const std::string& val) {
+    nulls = val;
+  }
+
+  bool operator == (const TBoolColumn & rhs) const
+  {
+    if (!(values == rhs.values))
+      return false;
+    if (!(nulls == rhs.nulls))
+      return false;
+    return true;
+  }
+  bool operator != (const TBoolColumn &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TBoolColumn & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TBoolColumn &a, TBoolColumn &b);
+
+
+class TByteColumn {
+ public:
+
+  static const char* ascii_fingerprint; // = "1CB300106BAA463A70BB2A2395900F48";
+  static const uint8_t binary_fingerprint[16]; // = {0x1C,0xB3,0x00,0x10,0x6B,0xAA,0x46,0x3A,0x70,0xBB,0x2A,0x23,0x95,0x90,0x0F,0x48};
+
+  TByteColumn() : nulls() {
+  }
+
+  virtual ~TByteColumn() throw() {}
+
+  std::vector<int8_t>  values;
+  std::string nulls;
+
+  void __set_values(const std::vector<int8_t> & val) {
+    values = val;
+  }
+
+  void __set_nulls(const std::string& val) {
+    nulls = val;
+  }
+
+  bool operator == (const TByteColumn & rhs) const
+  {
+    if (!(values == rhs.values))
+      return false;
+    if (!(nulls == rhs.nulls))
+      return false;
+    return true;
+  }
+  bool operator != (const TByteColumn &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TByteColumn & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TByteColumn &a, TByteColumn &b);
+
+
+class TI16Column {
+ public:
+
+  static const char* ascii_fingerprint; // = "6574CDB1F121C8DB47FB257A3F104BDB";
+  static const uint8_t binary_fingerprint[16]; // = {0x65,0x74,0xCD,0xB1,0xF1,0x21,0xC8,0xDB,0x47,0xFB,0x25,0x7A,0x3F,0x10,0x4B,0xDB};
+
+  TI16Column() : nulls() {
+  }
+
+  virtual ~TI16Column() throw() {}
+
+  std::vector<int16_t>  values;
+  std::string nulls;
+
+  void __set_values(const std::vector<int16_t> & val) {
+    values = val;
+  }
+
+  void __set_nulls(const std::string& val) {
+    nulls = val;
+  }
+
+  bool operator == (const TI16Column & rhs) const
+  {
+    if (!(values == rhs.values))
+      return false;
+    if (!(nulls == rhs.nulls))
+      return false;
+    return true;
+  }
+  bool operator != (const TI16Column &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TI16Column & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TI16Column &a, TI16Column &b);
+
+
+class TI32Column {
+ public:
+
+  static const char* ascii_fingerprint; // = "CCCCE89C7E9DA10280F5663700677313";
+  static const uint8_t binary_fingerprint[16]; // = {0xCC,0xCC,0xE8,0x9C,0x7E,0x9D,0xA1,0x02,0x80,0xF5,0x66,0x37,0x00,0x67,0x73,0x13};
+
+  TI32Column() : nulls() {
+  }
+
+  virtual ~TI32Column() throw() {}
+
+  std::vector<int32_t>  values;
+  std::string nulls;
+
+  void __set_values(const std::vector<int32_t> & val) {
+    values = val;
+  }
+
+  void __set_nulls(const std::string& val) {
+    nulls = val;
+  }
+
+  bool operator == (const TI32Column & rhs) const
+  {
+    if (!(values == rhs.values))
+      return false;
+    if (!(nulls == rhs.nulls))
+      return false;
+    return true;
+  }
+  bool operator != (const TI32Column &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TI32Column & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TI32Column &a, TI32Column &b);
+
+
+class TI64Column {
+ public:
+
+  static const char* ascii_fingerprint; // = "925353917FC0AF87976A2338011F5A31";
+  static const uint8_t binary_fingerprint[16]; // = {0x92,0x53,0x53,0x91,0x7F,0xC0,0xAF,0x87,0x97,0x6A,0x23,0x38,0x01,0x1F,0x5A,0x31};
+
+  TI64Column() : nulls() {
+  }
+
+  virtual ~TI64Column() throw() {}
+
+  std::vector<int64_t>  values;
+  std::string nulls;
+
+  void __set_values(const std::vector<int64_t> & val) {
+    values = val;
+  }
+
+  void __set_nulls(const std::string& val) {
+    nulls = val;
+  }
+
+  bool operator == (const TI64Column & rhs) const
+  {
+    if (!(values == rhs.values))
+      return false;
+    if (!(nulls == rhs.nulls))
+      return false;
+    return true;
+  }
+  bool operator != (const TI64Column &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TI64Column & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TI64Column &a, TI64Column &b);
+
+
+class TDoubleColumn {
+ public:
+
+  static const char* ascii_fingerprint; // = "8FF1C050A8D7FD247AEB23CD71539C09";
+  static const uint8_t binary_fingerprint[16]; // = {0x8F,0xF1,0xC0,0x50,0xA8,0xD7,0xFD,0x24,0x7A,0xEB,0x23,0xCD,0x71,0x53,0x9C,0x09};
+
+  TDoubleColumn() : nulls() {
+  }
+
+  virtual ~TDoubleColumn() throw() {}
+
+  std::vector<double>  values;
+  std::string nulls;
+
+  void __set_values(const std::vector<double> & val) {
+    values = val;
+  }
+
+  void __set_nulls(const std::string& val) {
+    nulls = val;
+  }
+
+  bool operator == (const TDoubleColumn & rhs) const
+  {
+    if (!(values == rhs.values))
+      return false;
+    if (!(nulls == rhs.nulls))
+      return false;
+    return true;
+  }
+  bool operator != (const TDoubleColumn &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TDoubleColumn & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TDoubleColumn &a, TDoubleColumn &b);
+
+
+class TStringColumn {
+ public:
+
+  static const char* ascii_fingerprint; // = "BE556BF7091B2DABBA1863D5E458B15F";
+  static const uint8_t binary_fingerprint[16]; // = {0xBE,0x55,0x6B,0xF7,0x09,0x1B,0x2D,0xAB,0xBA,0x18,0x63,0xD5,0xE4,0x58,0xB1,0x5F};
+
+  TStringColumn() : nulls() {
+  }
+
+  virtual ~TStringColumn() throw() {}
+
+  std::vector<std::string>  values;
+  std::string nulls;
+
+  void __set_values(const std::vector<std::string> & val) {
+    values = val;
+  }
+
+  void __set_nulls(const std::string& val) {
+    nulls = val;
+  }
+
+  bool operator == (const TStringColumn & rhs) const
+  {
+    if (!(values == rhs.values))
+      return false;
+    if (!(nulls == rhs.nulls))
+      return false;
+    return true;
+  }
+  bool operator != (const TStringColumn &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TStringColumn & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TStringColumn &a, TStringColumn &b);
+
+
+class TBinaryColumn {
+ public:
+
+  static const char* ascii_fingerprint; // = "BE556BF7091B2DABBA1863D5E458B15F";
+  static const uint8_t binary_fingerprint[16]; // = {0xBE,0x55,0x6B,0xF7,0x09,0x1B,0x2D,0xAB,0xBA,0x18,0x63,0xD5,0xE4,0x58,0xB1,0x5F};
+
+  TBinaryColumn() : nulls() {
+  }
+
+  virtual ~TBinaryColumn() throw() {}
+
+  std::vector<std::string>  values;
+  std::string nulls;
+
+  void __set_values(const std::vector<std::string> & val) {
+    values = val;
+  }
+
+  void __set_nulls(const std::string& val) {
+    nulls = val;
+  }
+
+  bool operator == (const TBinaryColumn & rhs) const
+  {
+    if (!(values == rhs.values))
+      return false;
+    if (!(nulls == rhs.nulls))
+      return false;
+    return true;
+  }
+  bool operator != (const TBinaryColumn &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TBinaryColumn & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TBinaryColumn &a, TBinaryColumn &b);
+
+typedef struct _TColumn__isset {
+  _TColumn__isset() : boolVal(false), byteVal(false), i16Val(false), i32Val(false), i64Val(false), doubleVal(false), stringVal(false), binaryVal(false) {}
+  bool boolVal;
+  bool byteVal;
+  bool i16Val;
+  bool i32Val;
+  bool i64Val;
+  bool doubleVal;
+  bool stringVal;
+  bool binaryVal;
+} _TColumn__isset;
+
+class TColumn {
+ public:
+
+  static const char* ascii_fingerprint; // = "E6ADD10B4CDDE61A19E8878CC7039A17";
+  static const uint8_t binary_fingerprint[16]; // = {0xE6,0xAD,0xD1,0x0B,0x4C,0xDD,0xE6,0x1A,0x19,0xE8,0x87,0x8C,0xC7,0x03,0x9A,0x17};
+
+  TColumn() {
+  }
+
+  virtual ~TColumn() throw() {}
+
+  TBoolColumn boolVal;
+  TByteColumn byteVal;
+  TI16Column i16Val;
+  TI32Column i32Val;
+  TI64Column i64Val;
+  TDoubleColumn doubleVal;
+  TStringColumn stringVal;
+  TBinaryColumn binaryVal;
+
+  _TColumn__isset __isset;
+
+  void __set_boolVal(const TBoolColumn& val) {
+    boolVal = val;
+  }
+
+  void __set_byteVal(const TByteColumn& val) {
+    byteVal = val;
+  }
+
+  void __set_i16Val(const TI16Column& val) {
+    i16Val = val;
+  }
+
+  void __set_i32Val(const TI32Column& val) {
+    i32Val = val;
+  }
+
+  void __set_i64Val(const TI64Column& val) {
+    i64Val = val;
+  }
+
+  void __set_doubleVal(const TDoubleColumn& val) {
+    doubleVal = val;
+  }
+
+  void __set_stringVal(const TStringColumn& val) {
+    stringVal = val;
+  }
+
+  void __set_binaryVal(const TBinaryColumn& val) {
+    binaryVal = val;
+  }
+
+  bool operator == (const TColumn & rhs) const
+  {
+    if (!(boolVal == rhs.boolVal))
+      return false;
+    if (!(byteVal == rhs.byteVal))
+      return false;
+    if (!(i16Val == rhs.i16Val))
+      return false;
+    if (!(i32Val == rhs.i32Val))
+      return false;
+    if (!(i64Val == rhs.i64Val))
+      return false;
+    if (!(doubleVal == rhs.doubleVal))
+      return false;
+    if (!(stringVal == rhs.stringVal))
+      return false;
+    if (!(binaryVal == rhs.binaryVal))
+      return false;
+    return true;
+  }
+  bool operator != (const TColumn &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TColumn & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TColumn &a, TColumn &b);
+
 typedef struct _TRowSet__isset {
   _TRowSet__isset() : columns(false) {}
   bool columns;
@@ -1166,8 +1647,8 @@ typedef struct _TRowSet__isset {
 class TRowSet {
  public:
 
-  static const char* ascii_fingerprint; // = "698727A24268879440EE0DAFE68FC1C5";
-  static const uint8_t binary_fingerprint[16]; // = {0x69,0x87,0x27,0xA2,0x42,0x68,0x87,0x94,0x40,0xEE,0x0D,0xAF,0xE6,0x8F,0xC1,0xC5};
+  static const char* ascii_fingerprint; // = "46DA30A870489C7A58105AE0080DAEBF";
+  static const uint8_t binary_fingerprint[16]; // = {0x46,0xDA,0x30,0xA8,0x70,0x48,0x9C,0x7A,0x58,0x10,0x5A,0xE0,0x08,0x0D,0xAE,0xBF};
 
   TRowSet() : startRowOffset(0) {
   }
@@ -1465,8 +1946,8 @@ class TOpenSessionReq {
   static const char* ascii_fingerprint; // = "C8FD0F306A16C16BDA7B57F58BFAE5B2";
   static const uint8_t binary_fingerprint[16]; // = {0xC8,0xFD,0x0F,0x30,0x6A,0x16,0xC1,0x6B,0xDA,0x7B,0x57,0xF5,0x8B,0xFA,0xE5,0xB2};
 
-  TOpenSessionReq() : client_protocol((TProtocolVersion::type)0), username(), password() {
-    client_protocol = (TProtocolVersion::type)0;
+  TOpenSessionReq() : client_protocol((TProtocolVersion::type)5), username(), password() {
+    client_protocol = (TProtocolVersion::type)5;
 
   }
 
@@ -1541,8 +2022,8 @@ class TOpenSessionResp {
   static const char* ascii_fingerprint; // = "CFE7D7F4E9EC671F2518ED74FEE9F163";
   static const uint8_t binary_fingerprint[16]; // = {0xCF,0xE7,0xD7,0xF4,0xE9,0xEC,0x67,0x1F,0x25,0x18,0xED,0x74,0xFE,0xE9,0xF1,0x63};
 
-  TOpenSessionResp() : serverProtocolVersion((TProtocolVersion::type)0) {
-    serverProtocolVersion = (TProtocolVersion::type)0;
+  TOpenSessionResp() : serverProtocolVersion((TProtocolVersion::type)5) {
+    serverProtocolVersion = (TProtocolVersion::type)5;
 
   }
 
@@ -1848,17 +2329,18 @@ class TGetInfoResp {
 void swap(TGetInfoResp &a, TGetInfoResp &b);
 
 typedef struct _TExecuteStatementReq__isset {
-  _TExecuteStatementReq__isset() : confOverlay(false) {}
+  _TExecuteStatementReq__isset() : confOverlay(false), runAsync(true) {}
   bool confOverlay;
+  bool runAsync;
 } _TExecuteStatementReq__isset;
 
 class TExecuteStatementReq {
  public:
 
-  static const char* ascii_fingerprint; // = "4CDA19909D21B7D9907F85E3387EAB27";
-  static const uint8_t binary_fingerprint[16]; // = {0x4C,0xDA,0x19,0x90,0x9D,0x21,0xB7,0xD9,0x90,0x7F,0x85,0xE3,0x38,0x7E,0xAB,0x27};
+  static const char* ascii_fingerprint; // = "FED75DB77E66D76EC1939A51FB0D96FA";
+  static const uint8_t binary_fingerprint[16]; // = {0xFE,0xD7,0x5D,0xB7,0x7E,0x66,0xD7,0x6E,0xC1,0x93,0x9A,0x51,0xFB,0x0D,0x96,0xFA};
 
-  TExecuteStatementReq() : statement() {
+  TExecuteStatementReq() : statement(), runAsync(false) {
   }
 
   virtual ~TExecuteStatementReq() throw() {}
@@ -1866,6 +2348,7 @@ class TExecuteStatementReq {
   TSessionHandle sessionHandle;
   std::string statement;
   std::map<std::string, std::string>  confOverlay;
+  bool runAsync;
 
   _TExecuteStatementReq__isset __isset;
 
@@ -1882,6 +2365,11 @@ class TExecuteStatementReq {
     __isset.confOverlay = true;
   }
 
+  void __set_runAsync(const bool val) {
+    runAsync = val;
+    __isset.runAsync = true;
+  }
+
   bool operator == (const TExecuteStatementReq & rhs) const
   {
     if (!(sessionHandle == rhs.sessionHandle))
@@ -1891,6 +2379,10 @@ class TExecuteStatementReq {
     if (__isset.confOverlay != rhs.__isset.confOverlay)
       return false;
     else if (__isset.confOverlay && !(confOverlay == rhs.confOverlay))
+      return false;
+    if (__isset.runAsync != rhs.__isset.runAsync)
+      return false;
+    else if (__isset.runAsync && !(runAsync == rhs.runAsync))
       return false;
     return true;
   }
@@ -2787,23 +3279,29 @@ class TGetOperationStatusReq {
 void swap(TGetOperationStatusReq &a, TGetOperationStatusReq &b);
 
 typedef struct _TGetOperationStatusResp__isset {
-  _TGetOperationStatusResp__isset() : operationState(false) {}
+  _TGetOperationStatusResp__isset() : operationState(false), sqlState(false), errorCode(false), errorMessage(false) {}
   bool operationState;
+  bool sqlState;
+  bool errorCode;
+  bool errorMessage;
 } _TGetOperationStatusResp__isset;
 
 class TGetOperationStatusResp {
  public:
 
-  static const char* ascii_fingerprint; // = "4F27EC6715D9B6D702A4842459E6587B";
-  static const uint8_t binary_fingerprint[16]; // = {0x4F,0x27,0xEC,0x67,0x15,0xD9,0xB6,0xD7,0x02,0xA4,0x84,0x24,0x59,0xE6,0x58,0x7B};
+  static const char* ascii_fingerprint; // = "BD124DB87A5A2E7D11945BD1B17F013D";
+  static const uint8_t binary_fingerprint[16]; // = {0xBD,0x12,0x4D,0xB8,0x7A,0x5A,0x2E,0x7D,0x11,0x94,0x5B,0xD1,0xB1,0x7F,0x01,0x3D};
 
-  TGetOperationStatusResp() : operationState((TOperationState::type)0) {
+  TGetOperationStatusResp() : operationState((TOperationState::type)0), sqlState(), errorCode(0), errorMessage() {
   }
 
   virtual ~TGetOperationStatusResp() throw() {}
 
   TStatus status;
   TOperationState::type operationState;
+  std::string sqlState;
+  int32_t errorCode;
+  std::string errorMessage;
 
   _TGetOperationStatusResp__isset __isset;
 
@@ -2816,6 +3314,21 @@ class TGetOperationStatusResp {
     __isset.operationState = true;
   }
 
+  void __set_sqlState(const std::string& val) {
+    sqlState = val;
+    __isset.sqlState = true;
+  }
+
+  void __set_errorCode(const int32_t val) {
+    errorCode = val;
+    __isset.errorCode = true;
+  }
+
+  void __set_errorMessage(const std::string& val) {
+    errorMessage = val;
+    __isset.errorMessage = true;
+  }
+
   bool operator == (const TGetOperationStatusResp & rhs) const
   {
     if (!(status == rhs.status))
@@ -2823,6 +3336,18 @@ class TGetOperationStatusResp {
     if (__isset.operationState != rhs.__isset.operationState)
       return false;
     else if (__isset.operationState && !(operationState == rhs.operationState))
+      return false;
+    if (__isset.sqlState != rhs.__isset.sqlState)
+      return false;
+    else if (__isset.sqlState && !(sqlState == rhs.sqlState))
+      return false;
+    if (__isset.errorCode != rhs.__isset.errorCode)
+      return false;
+    else if (__isset.errorCode && !(errorCode == rhs.errorCode))
+      return false;
+    if (__isset.errorMessage != rhs.__isset.errorMessage)
+      return false;
+    else if (__isset.errorMessage && !(errorMessage == rhs.errorMessage))
       return false;
     return true;
   }
@@ -3032,8 +3557,8 @@ typedef struct _TGetResultSetMetadataResp__isset {
 class TGetResultSetMetadataResp {
  public:
 
-  static const char* ascii_fingerprint; // = "8778316D0AFC17584F192162BFF2AEDE";
-  static const uint8_t binary_fingerprint[16]; // = {0x87,0x78,0x31,0x6D,0x0A,0xFC,0x17,0x58,0x4F,0x19,0x21,0x62,0xBF,0xF2,0xAE,0xDE};
+  static const char* ascii_fingerprint; // = "42CD49B7F49CC1B6D4E6F5FA2D7BE812";
+  static const uint8_t binary_fingerprint[16]; // = {0x42,0xCD,0x49,0xB7,0xF4,0x9C,0xC1,0xB6,0xD4,0xE6,0xF5,0xFA,0x2D,0x7B,0xE8,0x12};
 
   TGetResultSetMetadataResp() {
   }
@@ -3139,8 +3664,8 @@ typedef struct _TFetchResultsResp__isset {
 class TFetchResultsResp {
  public:
 
-  static const char* ascii_fingerprint; // = "29891EA4D71B4283E8715DA5B95F2763";
-  static const uint8_t binary_fingerprint[16]; // = {0x29,0x89,0x1E,0xA4,0xD7,0x1B,0x42,0x83,0xE8,0x71,0x5D,0xA5,0xB9,0x5F,0x27,0x63};
+  static const char* ascii_fingerprint; // = "FC43BC2D6F3B76D4DB0F34226A745C8E";
+  static const uint8_t binary_fingerprint[16]; // = {0xFC,0x43,0xBC,0x2D,0x6F,0x3B,0x76,0xD4,0xDB,0x0F,0x34,0x22,0x6A,0x74,0x5C,0x8E};
 
   TFetchResultsResp() : hasMoreRows(0) {
   }
@@ -3193,6 +3718,272 @@ class TFetchResultsResp {
 };
 
 void swap(TFetchResultsResp &a, TFetchResultsResp &b);
+
+
+class TGetDelegationTokenReq {
+ public:
+
+  static const char* ascii_fingerprint; // = "07EA0311716A27924914E4354ED22D6C";
+  static const uint8_t binary_fingerprint[16]; // = {0x07,0xEA,0x03,0x11,0x71,0x6A,0x27,0x92,0x49,0x14,0xE4,0x35,0x4E,0xD2,0x2D,0x6C};
+
+  TGetDelegationTokenReq() : owner(), renewer() {
+  }
+
+  virtual ~TGetDelegationTokenReq() throw() {}
+
+  TSessionHandle sessionHandle;
+  std::string owner;
+  std::string renewer;
+
+  void __set_sessionHandle(const TSessionHandle& val) {
+    sessionHandle = val;
+  }
+
+  void __set_owner(const std::string& val) {
+    owner = val;
+  }
+
+  void __set_renewer(const std::string& val) {
+    renewer = val;
+  }
+
+  bool operator == (const TGetDelegationTokenReq & rhs) const
+  {
+    if (!(sessionHandle == rhs.sessionHandle))
+      return false;
+    if (!(owner == rhs.owner))
+      return false;
+    if (!(renewer == rhs.renewer))
+      return false;
+    return true;
+  }
+  bool operator != (const TGetDelegationTokenReq &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TGetDelegationTokenReq & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TGetDelegationTokenReq &a, TGetDelegationTokenReq &b);
+
+typedef struct _TGetDelegationTokenResp__isset {
+  _TGetDelegationTokenResp__isset() : delegationToken(false) {}
+  bool delegationToken;
+} _TGetDelegationTokenResp__isset;
+
+class TGetDelegationTokenResp {
+ public:
+
+  static const char* ascii_fingerprint; // = "C0E132DC412CEA08D771EAC38CEA1DA6";
+  static const uint8_t binary_fingerprint[16]; // = {0xC0,0xE1,0x32,0xDC,0x41,0x2C,0xEA,0x08,0xD7,0x71,0xEA,0xC3,0x8C,0xEA,0x1D,0xA6};
+
+  TGetDelegationTokenResp() : delegationToken() {
+  }
+
+  virtual ~TGetDelegationTokenResp() throw() {}
+
+  TStatus status;
+  std::string delegationToken;
+
+  _TGetDelegationTokenResp__isset __isset;
+
+  void __set_status(const TStatus& val) {
+    status = val;
+  }
+
+  void __set_delegationToken(const std::string& val) {
+    delegationToken = val;
+    __isset.delegationToken = true;
+  }
+
+  bool operator == (const TGetDelegationTokenResp & rhs) const
+  {
+    if (!(status == rhs.status))
+      return false;
+    if (__isset.delegationToken != rhs.__isset.delegationToken)
+      return false;
+    else if (__isset.delegationToken && !(delegationToken == rhs.delegationToken))
+      return false;
+    return true;
+  }
+  bool operator != (const TGetDelegationTokenResp &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TGetDelegationTokenResp & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TGetDelegationTokenResp &a, TGetDelegationTokenResp &b);
+
+
+class TCancelDelegationTokenReq {
+ public:
+
+  static const char* ascii_fingerprint; // = "1A3D66269336B7EC66998BFE1BECDE75";
+  static const uint8_t binary_fingerprint[16]; // = {0x1A,0x3D,0x66,0x26,0x93,0x36,0xB7,0xEC,0x66,0x99,0x8B,0xFE,0x1B,0xEC,0xDE,0x75};
+
+  TCancelDelegationTokenReq() : delegationToken() {
+  }
+
+  virtual ~TCancelDelegationTokenReq() throw() {}
+
+  TSessionHandle sessionHandle;
+  std::string delegationToken;
+
+  void __set_sessionHandle(const TSessionHandle& val) {
+    sessionHandle = val;
+  }
+
+  void __set_delegationToken(const std::string& val) {
+    delegationToken = val;
+  }
+
+  bool operator == (const TCancelDelegationTokenReq & rhs) const
+  {
+    if (!(sessionHandle == rhs.sessionHandle))
+      return false;
+    if (!(delegationToken == rhs.delegationToken))
+      return false;
+    return true;
+  }
+  bool operator != (const TCancelDelegationTokenReq &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TCancelDelegationTokenReq & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TCancelDelegationTokenReq &a, TCancelDelegationTokenReq &b);
+
+
+class TCancelDelegationTokenResp {
+ public:
+
+  static const char* ascii_fingerprint; // = "7142E89F09DC7C5F6FA916C7393F46C2";
+  static const uint8_t binary_fingerprint[16]; // = {0x71,0x42,0xE8,0x9F,0x09,0xDC,0x7C,0x5F,0x6F,0xA9,0x16,0xC7,0x39,0x3F,0x46,0xC2};
+
+  TCancelDelegationTokenResp() {
+  }
+
+  virtual ~TCancelDelegationTokenResp() throw() {}
+
+  TStatus status;
+
+  void __set_status(const TStatus& val) {
+    status = val;
+  }
+
+  bool operator == (const TCancelDelegationTokenResp & rhs) const
+  {
+    if (!(status == rhs.status))
+      return false;
+    return true;
+  }
+  bool operator != (const TCancelDelegationTokenResp &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TCancelDelegationTokenResp & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TCancelDelegationTokenResp &a, TCancelDelegationTokenResp &b);
+
+
+class TRenewDelegationTokenReq {
+ public:
+
+  static const char* ascii_fingerprint; // = "1A3D66269336B7EC66998BFE1BECDE75";
+  static const uint8_t binary_fingerprint[16]; // = {0x1A,0x3D,0x66,0x26,0x93,0x36,0xB7,0xEC,0x66,0x99,0x8B,0xFE,0x1B,0xEC,0xDE,0x75};
+
+  TRenewDelegationTokenReq() : delegationToken() {
+  }
+
+  virtual ~TRenewDelegationTokenReq() throw() {}
+
+  TSessionHandle sessionHandle;
+  std::string delegationToken;
+
+  void __set_sessionHandle(const TSessionHandle& val) {
+    sessionHandle = val;
+  }
+
+  void __set_delegationToken(const std::string& val) {
+    delegationToken = val;
+  }
+
+  bool operator == (const TRenewDelegationTokenReq & rhs) const
+  {
+    if (!(sessionHandle == rhs.sessionHandle))
+      return false;
+    if (!(delegationToken == rhs.delegationToken))
+      return false;
+    return true;
+  }
+  bool operator != (const TRenewDelegationTokenReq &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TRenewDelegationTokenReq & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TRenewDelegationTokenReq &a, TRenewDelegationTokenReq &b);
+
+
+class TRenewDelegationTokenResp {
+ public:
+
+  static const char* ascii_fingerprint; // = "7142E89F09DC7C5F6FA916C7393F46C2";
+  static const uint8_t binary_fingerprint[16]; // = {0x71,0x42,0xE8,0x9F,0x09,0xDC,0x7C,0x5F,0x6F,0xA9,0x16,0xC7,0x39,0x3F,0x46,0xC2};
+
+  TRenewDelegationTokenResp() {
+  }
+
+  virtual ~TRenewDelegationTokenResp() throw() {}
+
+  TStatus status;
+
+  void __set_status(const TStatus& val) {
+    status = val;
+  }
+
+  bool operator == (const TRenewDelegationTokenResp & rhs) const
+  {
+    if (!(status == rhs.status))
+      return false;
+    return true;
+  }
+  bool operator != (const TRenewDelegationTokenResp &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TRenewDelegationTokenResp & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+};
+
+void swap(TRenewDelegationTokenResp &a, TRenewDelegationTokenResp &b);
 
 }}}}} // namespace
 

@@ -17,11 +17,13 @@
  */
 package org.apache.hive.service.cli.operation;
 
-
-
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.hadoop.hive.ql.processors.CommandProcessor;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorFactory;
+import org.apache.hive.service.cli.HiveSQLException;
 import org.apache.hive.service.cli.OperationType;
 import org.apache.hive.service.cli.session.HiveSession;
 
@@ -29,10 +31,11 @@ public abstract class ExecuteStatementOperation extends Operation {
   protected String statement = null;
   protected Map<String, String> confOverlay = new HashMap<String, String>();
 
-  public ExecuteStatementOperation(HiveSession parentSession, String statement, Map<String, String> confOverlay) {
-    super(parentSession, OperationType.EXECUTE_STATEMENT);
+  public ExecuteStatementOperation(HiveSession parentSession, String statement,
+      Map<String, String> confOverlay, boolean runInBackground) {
+    super(parentSession, OperationType.EXECUTE_STATEMENT, runInBackground);
     this.statement = statement;
-    this.confOverlay = confOverlay;
+    setConfOverlay(confOverlay);
   }
 
   public String getStatement() {
@@ -40,20 +43,28 @@ public abstract class ExecuteStatementOperation extends Operation {
   }
 
   public static ExecuteStatementOperation newExecuteStatementOperation(
-      HiveSession parentSession, String statement, Map<String, String> confOverlay) {
+      HiveSession parentSession, String statement, Map<String, String> confOverlay, boolean runAsync)
+          throws HiveSQLException {
     String[] tokens = statement.trim().split("\\s+");
-    String command = tokens[0].toLowerCase();
+    CommandProcessor processor = null;
+    try {
+      processor = CommandProcessorFactory.getForHiveCommand(tokens, parentSession.getHiveConf());
+    } catch (SQLException e) {
+      throw new HiveSQLException(e.getMessage(), e.getSQLState(), e);
+    }
+    if (processor == null) {
+      return new SQLOperation(parentSession, statement, confOverlay, runAsync);
+    }
+    return new HiveCommandOperation(parentSession, statement, processor, confOverlay);
+  }
 
-    if ("set".equals(command)) {
-      return new SetOperation(parentSession, statement, confOverlay);
-    } else if ("dfs".equals(command)) {
-      return new DfsOperation(parentSession, statement, confOverlay);
-    } else if ("add".equals(command)) {
-      return new AddResourceOperation(parentSession, statement, confOverlay);
-    } else if ("delete".equals(command)) {
-      return new DeleteResourceOperation(parentSession, statement, confOverlay);
-    } else {
-      return new SQLOperation(parentSession, statement, confOverlay);
+  protected Map<String, String> getConfOverlay() {
+    return confOverlay;
+  }
+
+  protected void setConfOverlay(Map<String, String> confOverlay) {
+    if (confOverlay != null) {
+      this.confOverlay = confOverlay;
     }
   }
 }

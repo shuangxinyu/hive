@@ -1,70 +1,84 @@
 PREHOOK: query: create table src_truncate (key string, value string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table src_truncate (key string, value string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@src_truncate
-PREHOOK: query: load data local inpath '../data/files/kv1.txt' into table src_truncate
+PREHOOK: query: load data local inpath '../../data/files/kv1.txt' into table src_truncate
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@src_truncate
-POSTHOOK: query: load data local inpath '../data/files/kv1.txt' into table src_truncate
+POSTHOOK: query: load data local inpath '../../data/files/kv1.txt' into table src_truncate
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@src_truncate
 PREHOOK: query: create table srcpart_truncate (key string, value string) partitioned by (ds string, hr string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table srcpart_truncate (key string, value string) partitioned by (ds string, hr string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@srcpart_truncate
 PREHOOK: query: alter table srcpart_truncate add partition (ds='2008-04-08', hr='11')
 PREHOOK: type: ALTERTABLE_ADDPARTS
-PREHOOK: Input: default@srcpart_truncate
+PREHOOK: Output: default@srcpart_truncate
 POSTHOOK: query: alter table srcpart_truncate add partition (ds='2008-04-08', hr='11')
 POSTHOOK: type: ALTERTABLE_ADDPARTS
-POSTHOOK: Input: default@srcpart_truncate
+POSTHOOK: Output: default@srcpart_truncate
 POSTHOOK: Output: default@srcpart_truncate@ds=2008-04-08/hr=11
 PREHOOK: query: alter table srcpart_truncate add partition (ds='2008-04-08', hr='12')
 PREHOOK: type: ALTERTABLE_ADDPARTS
-PREHOOK: Input: default@srcpart_truncate
+PREHOOK: Output: default@srcpart_truncate
 POSTHOOK: query: alter table srcpart_truncate add partition (ds='2008-04-08', hr='12')
 POSTHOOK: type: ALTERTABLE_ADDPARTS
-POSTHOOK: Input: default@srcpart_truncate
+POSTHOOK: Output: default@srcpart_truncate
 POSTHOOK: Output: default@srcpart_truncate@ds=2008-04-08/hr=12
 PREHOOK: query: alter table srcpart_truncate add partition (ds='2008-04-09', hr='11')
 PREHOOK: type: ALTERTABLE_ADDPARTS
-PREHOOK: Input: default@srcpart_truncate
+PREHOOK: Output: default@srcpart_truncate
 POSTHOOK: query: alter table srcpart_truncate add partition (ds='2008-04-09', hr='11')
 POSTHOOK: type: ALTERTABLE_ADDPARTS
-POSTHOOK: Input: default@srcpart_truncate
+POSTHOOK: Output: default@srcpart_truncate
 POSTHOOK: Output: default@srcpart_truncate@ds=2008-04-09/hr=11
 PREHOOK: query: alter table srcpart_truncate add partition (ds='2008-04-09', hr='12')
 PREHOOK: type: ALTERTABLE_ADDPARTS
-PREHOOK: Input: default@srcpart_truncate
+PREHOOK: Output: default@srcpart_truncate
 POSTHOOK: query: alter table srcpart_truncate add partition (ds='2008-04-09', hr='12')
 POSTHOOK: type: ALTERTABLE_ADDPARTS
-POSTHOOK: Input: default@srcpart_truncate
+POSTHOOK: Output: default@srcpart_truncate
 POSTHOOK: Output: default@srcpart_truncate@ds=2008-04-09/hr=12
-PREHOOK: query: load data local inpath '../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-08', hr='11')
+PREHOOK: query: load data local inpath '../../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-08', hr='11')
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@srcpart_truncate@ds=2008-04-08/hr=11
-POSTHOOK: query: load data local inpath '../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-08', hr='11')
+POSTHOOK: query: load data local inpath '../../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-08', hr='11')
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@srcpart_truncate@ds=2008-04-08/hr=11
-PREHOOK: query: load data local inpath '../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-08', hr='12')
+PREHOOK: query: load data local inpath '../../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-08', hr='12')
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@srcpart_truncate@ds=2008-04-08/hr=12
-POSTHOOK: query: load data local inpath '../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-08', hr='12')
+POSTHOOK: query: load data local inpath '../../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-08', hr='12')
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@srcpart_truncate@ds=2008-04-08/hr=12
-PREHOOK: query: load data local inpath '../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-09', hr='11')
+PREHOOK: query: load data local inpath '../../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-09', hr='11')
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@srcpart_truncate@ds=2008-04-09/hr=11
-POSTHOOK: query: load data local inpath '../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-09', hr='11')
+POSTHOOK: query: load data local inpath '../../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-09', hr='11')
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@srcpart_truncate@ds=2008-04-09/hr=11
-PREHOOK: query: load data local inpath '../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-09', hr='12')
+PREHOOK: query: load data local inpath '../../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-09', hr='12')
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@srcpart_truncate@ds=2008-04-09/hr=12
-POSTHOOK: query: load data local inpath '../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-09', hr='12')
+POSTHOOK: query: load data local inpath '../../data/files/kv1.txt' into table srcpart_truncate partition (ds='2008-04-09', hr='12')
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@srcpart_truncate@ds=2008-04-09/hr=12
 PREHOOK: query: -- truncate non-partitioned table
 explain TRUNCATE TABLE src_truncate
@@ -72,9 +86,6 @@ PREHOOK: type: TRUNCATETABLE
 POSTHOOK: query: -- truncate non-partitioned table
 explain TRUNCATE TABLE src_truncate
 POSTHOOK: type: TRUNCATETABLE
-ABSTRACT SYNTAX TREE:
-  (TOK_TRUNCATETABLE (TOK_TABLE_PARTITION src_truncate))
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -83,7 +94,6 @@ STAGE PLANS:
       Truncate Table Operator:
         Truncate Table or Partition
           TableName: src_truncate
-
 
 PREHOOK: query: TRUNCATE TABLE src_truncate
 PREHOOK: type: TRUNCATETABLE
@@ -105,9 +115,6 @@ PREHOOK: type: TRUNCATETABLE
 POSTHOOK: query: -- truncate a partition
 explain TRUNCATE TABLE srcpart_truncate partition (ds='2008-04-08', hr='11')
 POSTHOOK: type: TRUNCATETABLE
-ABSTRACT SYNTAX TREE:
-  (TOK_TRUNCATETABLE (TOK_TABLE_PARTITION srcpart_truncate (TOK_PARTSPEC (TOK_PARTVAL ds '2008-04-08') (TOK_PARTVAL hr '11'))))
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -119,7 +126,6 @@ STAGE PLANS:
             ds 2008-04-08
             hr 11
           TableName: srcpart_truncate
-
 
 PREHOOK: query: TRUNCATE TABLE srcpart_truncate partition (ds='2008-04-08', hr='11')
 PREHOOK: type: TRUNCATETABLE
@@ -143,9 +149,6 @@ PREHOOK: type: TRUNCATETABLE
 POSTHOOK: query: -- truncate partitions with partial spec
 explain TRUNCATE TABLE srcpart_truncate partition (ds, hr='12')
 POSTHOOK: type: TRUNCATETABLE
-ABSTRACT SYNTAX TREE:
-  (TOK_TRUNCATETABLE (TOK_TABLE_PARTITION srcpart_truncate (TOK_PARTSPEC (TOK_PARTVAL ds) (TOK_PARTVAL hr '12'))))
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -157,7 +160,6 @@ STAGE PLANS:
             ds 
             hr 12
           TableName: srcpart_truncate
-
 
 PREHOOK: query: TRUNCATE TABLE srcpart_truncate partition (ds, hr='12')
 PREHOOK: type: TRUNCATETABLE
@@ -185,9 +187,6 @@ PREHOOK: type: TRUNCATETABLE
 POSTHOOK: query: -- truncate partitioned table
 explain TRUNCATE TABLE srcpart_truncate
 POSTHOOK: type: TRUNCATETABLE
-ABSTRACT SYNTAX TREE:
-  (TOK_TRUNCATETABLE (TOK_TABLE_PARTITION srcpart_truncate))
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -196,7 +195,6 @@ STAGE PLANS:
       Truncate Table Operator:
         Truncate Table or Partition
           TableName: srcpart_truncate
-
 
 PREHOOK: query: TRUNCATE TABLE srcpart_truncate
 PREHOOK: type: TRUNCATETABLE

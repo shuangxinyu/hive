@@ -21,6 +21,7 @@ package org.apache.hive.service.cli.thrift;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.hive.service.auth.HiveAuthFactory;
 import org.apache.hive.service.cli.CLIServiceClient;
 import org.apache.hive.service.cli.FetchOrientation;
 import org.apache.hive.service.cli.GetInfoType;
@@ -28,9 +29,12 @@ import org.apache.hive.service.cli.GetInfoValue;
 import org.apache.hive.service.cli.HiveSQLException;
 import org.apache.hive.service.cli.OperationHandle;
 import org.apache.hive.service.cli.OperationState;
+import org.apache.hive.service.cli.OperationStatus;
 import org.apache.hive.service.cli.RowSet;
+import org.apache.hive.service.cli.RowSetFactory;
 import org.apache.hive.service.cli.SessionHandle;
 import org.apache.hive.service.cli.TableSchema;
+import org.apache.thrift.TException;
 
 /**
  * ThriftCLIServiceClient.
@@ -63,7 +67,7 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
       req.setConfiguration(configuration);
       TOpenSessionResp resp = cliService.OpenSession(req);
       checkStatus(resp.getStatus());
-      return new SessionHandle(resp.getSessionHandle());
+      return new SessionHandle(resp.getSessionHandle(), resp.getServerProtocolVersion());
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -122,12 +126,31 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
   public OperationHandle executeStatement(SessionHandle sessionHandle, String statement,
       Map<String, String> confOverlay)
           throws HiveSQLException {
+    return executeStatementInternal(sessionHandle, statement, confOverlay, false);
+  }
+
+  /* (non-Javadoc)
+   * @see org.apache.hive.service.cli.ICLIService#executeStatementAsync(org.apache.hive.service.cli.SessionHandle, java.lang.String, java.util.Map)
+   */
+  @Override
+  public OperationHandle executeStatementAsync(SessionHandle sessionHandle, String statement,
+      Map<String, String> confOverlay)
+          throws HiveSQLException {
+    return executeStatementInternal(sessionHandle, statement, confOverlay, true);
+  }
+
+  private OperationHandle executeStatementInternal(SessionHandle sessionHandle, String statement,
+      Map<String, String> confOverlay, boolean isAsync)
+          throws HiveSQLException {
     try {
-      TExecuteStatementReq req = new TExecuteStatementReq(sessionHandle.toTSessionHandle(), statement);
+      TExecuteStatementReq req =
+          new TExecuteStatementReq(sessionHandle.toTSessionHandle(), statement);
       req.setConfOverlay(confOverlay);
+      req.setRunAsync(isAsync);
       TExecuteStatementResp resp = cliService.ExecuteStatement(req);
       checkStatus(resp.getStatus());
-      return new OperationHandle(resp.getOperationHandle());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -144,7 +167,8 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
       TGetTypeInfoReq req = new TGetTypeInfoReq(sessionHandle.toTSessionHandle());
       TGetTypeInfoResp resp = cliService.GetTypeInfo(req);
       checkStatus(resp.getStatus());
-      return new OperationHandle(resp.getOperationHandle());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -161,7 +185,8 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
       TGetCatalogsReq req = new TGetCatalogsReq(sessionHandle.toTSessionHandle());
       TGetCatalogsResp resp = cliService.GetCatalogs(req);
       checkStatus(resp.getStatus());
-      return new OperationHandle(resp.getOperationHandle());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -182,7 +207,8 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
       req.setSchemaName(schemaName);
       TGetSchemasResp resp = cliService.GetSchemas(req);
       checkStatus(resp.getStatus());
-      return new OperationHandle(resp.getOperationHandle());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -204,7 +230,8 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
       req.setSchemaName(schemaName);
       TGetTablesResp resp = cliService.GetTables(req);
       checkStatus(resp.getStatus());
-      return new OperationHandle(resp.getOperationHandle());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -221,7 +248,8 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
       TGetTableTypesReq req = new TGetTableTypesReq(sessionHandle.toTSessionHandle());
       TGetTableTypesResp resp = cliService.GetTableTypes(req);
       checkStatus(resp.getStatus());
-      return new OperationHandle(resp.getOperationHandle());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -245,7 +273,8 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
       req.setColumnName(columnName);
       TGetColumnsResp resp = cliService.GetColumns(req);
       checkStatus(resp.getStatus());
-      return new OperationHandle(resp.getOperationHandle());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -265,7 +294,8 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
       req.setSchemaName(schemaName);
       TGetFunctionsResp resp = cliService.GetFunctions(req);
       checkStatus(resp.getStatus());
-      return new OperationHandle(resp.getOperationHandle());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -277,12 +307,18 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
    * @see org.apache.hive.service.cli.ICLIService#getOperationStatus(org.apache.hive.service.cli.OperationHandle)
    */
   @Override
-  public OperationState getOperationStatus(OperationHandle opHandle) throws HiveSQLException {
+  public OperationStatus getOperationStatus(OperationHandle opHandle) throws HiveSQLException {
     try {
       TGetOperationStatusReq req = new TGetOperationStatusReq(opHandle.toTOperationHandle());
       TGetOperationStatusResp resp = cliService.GetOperationStatus(req);
+      // Checks the status of the RPC call, throws an exception in case of error
       checkStatus(resp.getStatus());
-      return OperationState.getOperationState(resp.getOperationState());
+      OperationState opState = OperationState.getOperationState(resp.getOperationState());
+      HiveSQLException opException = null;
+      if (opState == OperationState.ERROR) {
+        opException = new HiveSQLException(resp.getErrorMessage(), resp.getSqlState(), resp.getErrorCode());
+      }
+      return new OperationStatus(opState, opException);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -354,7 +390,7 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
       req.setMaxRows(maxRows);
       TFetchResultsResp resp = cliService.FetchResults(req);
       checkStatus(resp.getStatus());
-      return new RowSet(resp.getResults());
+      return RowSetFactory.create(resp.getResults(), opHandle.getProtocolVersion());
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -369,5 +405,49 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
   public RowSet fetchResults(OperationHandle opHandle) throws HiveSQLException {
     // TODO: set the correct default fetch size
     return fetchResults(opHandle, FetchOrientation.FETCH_NEXT, 10000);
+  }
+
+  @Override
+  public String getDelegationToken(SessionHandle sessionHandle, HiveAuthFactory authFactory,
+      String owner, String renewer) throws HiveSQLException {
+    TGetDelegationTokenReq req = new TGetDelegationTokenReq(
+        sessionHandle.toTSessionHandle(), owner, renewer);
+    try {
+      TGetDelegationTokenResp tokenResp = cliService.GetDelegationToken(req);
+      checkStatus(tokenResp.getStatus());
+      return tokenResp.getDelegationToken();
+    } catch (Exception e) {
+      throw new HiveSQLException(e);
+    }
+  }
+
+  @Override
+  public void cancelDelegationToken(SessionHandle sessionHandle, HiveAuthFactory authFactory,
+      String tokenStr) throws HiveSQLException {
+    TCancelDelegationTokenReq cancelReq = new TCancelDelegationTokenReq(
+          sessionHandle.toTSessionHandle(), tokenStr);
+    try {
+      TCancelDelegationTokenResp cancelResp =
+        cliService.CancelDelegationToken(cancelReq);
+      checkStatus(cancelResp.getStatus());
+      return;
+    } catch (TException e) {
+      throw new HiveSQLException(e);
+    }
+  }
+
+  @Override
+  public void renewDelegationToken(SessionHandle sessionHandle, HiveAuthFactory authFactory,
+      String tokenStr) throws HiveSQLException {
+    TRenewDelegationTokenReq cancelReq = new TRenewDelegationTokenReq(
+        sessionHandle.toTSessionHandle(), tokenStr);
+    try {
+      TRenewDelegationTokenResp renewResp =
+        cliService.RenewDelegationToken(cancelReq);
+      checkStatus(renewResp.getStatus());
+      return;
+    } catch (Exception e) {
+      throw new HiveSQLException(e);
+    }
   }
 }

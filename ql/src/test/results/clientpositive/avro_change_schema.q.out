@@ -13,6 +13,7 @@ TBLPROPERTIES ('avro.schema.literal'='{ "namespace": "org.apache.hive",
     { "name":"string2", "type":"string" }
   ] }')
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: -- verify that we can update the table properties
 CREATE TABLE avro2
 ROW FORMAT
@@ -28,13 +29,14 @@ TBLPROPERTIES ('avro.schema.literal'='{ "namespace": "org.apache.hive",
     { "name":"string2", "type":"string" }
   ] }')
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@avro2
 PREHOOK: query: DESCRIBE avro2
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@avro2
 POSTHOOK: query: DESCRIBE avro2
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
+POSTHOOK: Input: default@avro2
 string1             	string              	from deserializer   
 string2             	string              	from deserializer   
 PREHOOK: query: ALTER TABLE avro2 SET TBLPROPERTIES ('avro.schema.literal'='{ "namespace": "org.apache.hive",
@@ -61,10 +63,10 @@ POSTHOOK: Input: default@avro2
 POSTHOOK: Output: default@avro2
 PREHOOK: query: DESCRIBE avro2
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@avro2
 POSTHOOK: query: DESCRIBE avro2
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
+POSTHOOK: Input: default@avro2
 int1                	int                 	from deserializer   
 float1              	float               	from deserializer   
 double1             	double              	from deserializer   

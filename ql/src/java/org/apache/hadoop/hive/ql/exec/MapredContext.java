@@ -26,6 +26,9 @@ import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.ql.exec.tez.TezContext;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFEvaluator;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDTF;
@@ -40,17 +43,19 @@ public class MapredContext {
   private static final Log logger = LogFactory.getLog("MapredContext");
   private static final ThreadLocal<MapredContext> contexts = new ThreadLocal<MapredContext>();
 
-  static MapredContext get() {
+  public static MapredContext get() {
     return contexts.get();
   }
 
-  static MapredContext init(boolean isMap, JobConf jobConf) {
-    MapredContext context = new MapredContext(isMap, jobConf);
+  public static MapredContext init(boolean isMap, JobConf jobConf) {
+    MapredContext context =
+        HiveConf.getVar(jobConf, ConfVars.HIVE_EXECUTION_ENGINE).equals("tez") ?
+            new TezContext(isMap, jobConf) : new MapredContext(isMap, jobConf);
     contexts.set(context);
     return context;
   }
 
-  static void close() {
+  public static void close() {
     MapredContext context = contexts.get();
     if (context != null) {
       context.closeAll();
@@ -64,7 +69,7 @@ public class MapredContext {
 
   private Reporter reporter;
 
-  private MapredContext(boolean isMap, JobConf jobConf) {
+  protected MapredContext(boolean isMap, JobConf jobConf) {
     this.isMap = isMap;
     this.jobConf = jobConf;
     this.udfs = new ArrayList<Closeable>();
@@ -91,7 +96,7 @@ public class MapredContext {
     return jobConf;
   }
 
-  void setReporter(Reporter reporter) {
+  public void setReporter(Reporter reporter) {
     this.reporter = reporter;
   }
 
@@ -139,8 +144,8 @@ public class MapredContext {
     try {
       Method initMethod = func.getClass().getMethod("configure", MapredContext.class);
       return initMethod.getDeclaringClass() != GenericUDF.class &&
-          initMethod.getDeclaringClass() != GenericUDAFEvaluator.class &&
-          initMethod.getDeclaringClass() != GenericUDTF.class;
+        initMethod.getDeclaringClass() != GenericUDAFEvaluator.class &&
+        initMethod.getDeclaringClass() != GenericUDTF.class;
     } catch (Exception e) {
       return false;
     }
@@ -150,7 +155,7 @@ public class MapredContext {
     try {
       Method closeMethod = func.getClass().getMethod("close");
       return closeMethod.getDeclaringClass() != GenericUDF.class &&
-          closeMethod.getDeclaringClass() != GenericUDAFEvaluator.class;
+        closeMethod.getDeclaringClass() != GenericUDAFEvaluator.class;
     } catch (Exception e) {
       return false;
     }

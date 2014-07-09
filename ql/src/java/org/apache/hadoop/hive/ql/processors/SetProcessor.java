@@ -99,56 +99,66 @@ public class SetProcessor implements CommandProcessor {
     }
   }
 
+  @Override
   public void init() {
   }
 
-  private CommandProcessorResponse setVariable(String varname, String varvalue){
+  public CommandProcessorResponse executeSetVariable(String varname, String varvalue) {
+    try {
+      return new CommandProcessorResponse(setVariable(varname, varvalue));
+    } catch (Exception e) {
+      return new CommandProcessorResponse(1, e.getMessage(), "42000");
+    }
+  }
+
+  public static int setVariable(String varname, String varvalue) throws IllegalArgumentException {
     SessionState ss = SessionState.get();
     if (varvalue.contains("\n")){
       ss.err.println("Warning: Value had a \\n character in it.");
     }
+    varname = varname.trim();
     if (varname.startsWith(SetProcessor.ENV_PREFIX)){
       ss.err.println("env:* variables can not be set.");
-      return new CommandProcessorResponse(1);
+      return 1;
     } else if (varname.startsWith(SetProcessor.SYSTEM_PREFIX)){
       String propName = varname.substring(SetProcessor.SYSTEM_PREFIX.length());
       System.getProperties().setProperty(propName, new VariableSubstitution().substitute(ss.getConf(),varvalue));
-      return new CommandProcessorResponse(0);
     } else if (varname.startsWith(SetProcessor.HIVECONF_PREFIX)){
       String propName = varname.substring(SetProcessor.HIVECONF_PREFIX.length());
-      try {
-        setConf(varname, propName, varvalue, false);
-        return new CommandProcessorResponse(0);
-      } catch (IllegalArgumentException e) {
-        return new CommandProcessorResponse(1, e.getMessage(), "42000");
-      }
+      setConf(varname, propName, varvalue, false);
     } else if (varname.startsWith(SetProcessor.HIVEVAR_PREFIX)) {
       String propName = varname.substring(SetProcessor.HIVEVAR_PREFIX.length());
       ss.getHiveVariables().put(propName, new VariableSubstitution().substitute(ss.getConf(),varvalue));
-      return new CommandProcessorResponse(0);
     } else {
-      try {
-        setConf(varname, varname, varvalue, true);
-        return new CommandProcessorResponse(0);
-      } catch (IllegalArgumentException e) {
-        return new CommandProcessorResponse(1, e.getMessage(), "42000");
-      }
+      setConf(varname, varname, varvalue, true);
     }
+    return 0;
   }
 
   // returns non-null string for validation fail
-  private void setConf(String varname, String key, String varvalue, boolean register)
+  private static void setConf(String varname, String key, String varvalue, boolean register)
         throws IllegalArgumentException {
     HiveConf conf = SessionState.get().getConf();
     String value = new VariableSubstitution().substitute(conf, varvalue);
     if (conf.getBoolVar(HiveConf.ConfVars.HIVECONFVALIDATION)) {
       HiveConf.ConfVars confVars = HiveConf.getConfVars(key);
-      if (confVars != null && !confVars.isType(value)) {
-        StringBuilder message = new StringBuilder();
-        message.append("'SET ").append(varname).append('=').append(varvalue);
-        message.append("' FAILED because "); message.append(key).append(" expects an ");
-        message.append(confVars.typeString()).append(" value.");
-        throw new IllegalArgumentException(message.toString());
+      if (confVars != null) {
+        if (!confVars.isType(value)) {
+          StringBuilder message = new StringBuilder();
+          message.append("'SET ").append(varname).append('=').append(varvalue);
+          message.append("' FAILED because ").append(key).append(" expects ");
+          message.append(confVars.typeString()).append(" type value.");
+          throw new IllegalArgumentException(message.toString());
+        }
+        String fail = confVars.validate(value);
+        if (fail != null) {
+          StringBuilder message = new StringBuilder();
+          message.append("'SET ").append(varname).append('=').append(varvalue);
+          message.append("' FAILED in validation : ").append(fail).append('.');
+          throw new IllegalArgumentException(message.toString());
+        }
+      } else if (key.startsWith("hive.")) {
+        throw new IllegalArgumentException("hive configuration " + key + " does not exists.");
       }
     }
     conf.verifyAndSet(key, value);
@@ -172,18 +182,18 @@ public class SetProcessor implements CommandProcessor {
   }
 
 
-  private CommandProcessorResponse getVariable(String varname){
+  private CommandProcessorResponse getVariable(String varname) {
     SessionState ss = SessionState.get();
     if (varname.equals("silent")){
       ss.out.println("silent" + "=" + ss.getIsSilent());
-      return new CommandProcessorResponse(0);
+      return createProcessorSuccessResponse();
     }
     if (varname.startsWith(SetProcessor.SYSTEM_PREFIX)){
       String propName = varname.substring(SetProcessor.SYSTEM_PREFIX.length());
       String result = System.getProperty(propName);
       if (result != null){
         ss.out.println(SetProcessor.SYSTEM_PREFIX+propName + "=" + result);
-        return new CommandProcessorResponse(0);
+        return createProcessorSuccessResponse();
       } else {
         ss.out.println( propName + " is undefined as a system property");
         return new CommandProcessorResponse(1);
@@ -192,7 +202,7 @@ public class SetProcessor implements CommandProcessor {
       String var = varname.substring(ENV_PREFIX.length());
       if (System.getenv(var)!=null){
         ss.out.println(SetProcessor.ENV_PREFIX+var + "=" + System.getenv(var));
-        return new CommandProcessorResponse(0);
+        return createProcessorSuccessResponse();
       } else {
         ss.out.println(varname + " is undefined as an environmental variable");
         return new CommandProcessorResponse(1);
@@ -201,7 +211,7 @@ public class SetProcessor implements CommandProcessor {
       String var = varname.substring(SetProcessor.HIVECONF_PREFIX.length());
       if (ss.getConf().get(var)!=null){
         ss.out.println(SetProcessor.HIVECONF_PREFIX+var + "=" + ss.getConf().get(var));
-        return new CommandProcessorResponse(0);
+        return createProcessorSuccessResponse();
       } else {
         ss.out.println(varname + " is undefined as a hive configuration variable");
         return new CommandProcessorResponse(1);
@@ -210,30 +220,34 @@ public class SetProcessor implements CommandProcessor {
       String var = varname.substring(SetProcessor.HIVEVAR_PREFIX.length());
       if (ss.getHiveVariables().get(var)!=null){
         ss.out.println(SetProcessor.HIVEVAR_PREFIX+var + "=" + ss.getHiveVariables().get(var));
-        return new CommandProcessorResponse(0);
+        return createProcessorSuccessResponse();
       } else {
         ss.out.println(varname + " is undefined as a hive variable");
         return new CommandProcessorResponse(1);
       }
     } else {
       dumpOption(varname);
-      return new CommandProcessorResponse(0, null, null, getSchema());
+      return createProcessorSuccessResponse();
     }
   }
 
+  private CommandProcessorResponse createProcessorSuccessResponse() {
+    return new CommandProcessorResponse(0, null, null, getSchema());
+  }
+
+  @Override
   public CommandProcessorResponse run(String command) {
     SessionState ss = SessionState.get();
-    Schema sch = getSchema();
 
     String nwcmd = command.trim();
     if (nwcmd.equals("")) {
       dumpOptions(ss.getConf().getChangedProperties());
-      return new CommandProcessorResponse(0, null, null, sch);
+      return createProcessorSuccessResponse();
     }
 
     if (nwcmd.equals("-v")) {
       dumpOptions(ss.getConf().getAllProperties());
-      return new CommandProcessorResponse(0, null, null, sch);
+      return createProcessorSuccessResponse();
     }
 
     String[] part = new String[2];
@@ -251,7 +265,7 @@ public class SetProcessor implements CommandProcessor {
         ss.setIsSilent(getBoolean(part[1]));
         return new CommandProcessorResponse(0);
       }
-      return setVariable(part[0],part[1]);
+      return executeSetVariable(part[0],part[1]);
     } else {
       return getVariable(nwcmd);
     }

@@ -20,20 +20,19 @@ package org.apache.hadoop.hive.ql.exec;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.CommandNeedRetryException;
-import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.io.HiveInputFormat;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.VirtualColumn;
 import org.apache.hadoop.hive.ql.plan.FetchWork;
+import org.apache.hadoop.hive.ql.plan.FileSinkDesc;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.plan.api.StageType;
 import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
@@ -65,17 +64,21 @@ public class FetchTask extends Task<FetchWork> implements Serializable {
 
     try {
       // Create a file system handle
-      JobConf job = new JobConf(conf, ExecDriver.class);
+      JobConf job = new JobConf(conf);
 
       Operator<?> source = work.getSource();
       if (source instanceof TableScanOperator) {
         TableScanOperator ts = (TableScanOperator) source;
+        // push down projections
+        ColumnProjectionUtils.appendReadColumns(
+            job, ts.getNeededColumnIDs(), ts.getNeededColumns());
+        // push down filters
         HiveInputFormat.pushFilters(job, ts);
-        ColumnProjectionUtils.appendReadColumnIDs(job, ts.getNeededColumnIDs());
       }
       sink = work.getSink();
       fetch = new FetchOperator(work, job, source, getVirtualColumns(source));
       source.initialize(conf, new ObjectInspector[]{fetch.getOutputObjectInspector()});
+      totalRows = 0;
 
     } catch (Exception e) {
       // Bail out ungracefully - we should never hit
@@ -119,14 +122,13 @@ public class FetchTask extends Task<FetchWork> implements Serializable {
     this.maxRows = maxRows;
   }
 
-  @Override
-  public boolean fetch(ArrayList<String> res) throws IOException, CommandNeedRetryException {
+  public boolean fetch(List res) throws IOException, CommandNeedRetryException {
     sink.reset(res);
+    int rowsRet = work.getLeastNumRows();
+    if (rowsRet <= 0) {
+      rowsRet = work.getLimit() >= 0 ? Math.min(work.getLimit() - totalRows, maxRows) : maxRows;
+    }
     try {
-      int rowsRet = work.getLeastNumRows();
-      if (rowsRet <= 0) {
-        rowsRet = work.getLimit() >= 0 ? Math.min(work.getLimit() - totalRows, maxRows) : maxRows;
-      }
       if (rowsRet <= 0) {
         fetch.clearFetchContext();
         return false;
@@ -153,6 +155,10 @@ public class FetchTask extends Task<FetchWork> implements Serializable {
     }
   }
 
+  public boolean isFetchFrom(FileSinkDesc fs) {
+    return fs.getFinalDirName().equals(work.getTblDir());
+  }
+
   @Override
   public StageType getType() {
     return StageType.FETCH;
@@ -161,19 +167,6 @@ public class FetchTask extends Task<FetchWork> implements Serializable {
   @Override
   public String getName() {
     return "FETCH";
-  }
-
-  @Override
-  protected void localizeMRTmpFilesImpl(Context ctx) {
-    String s = work.getTblDir();
-    if ((s != null) && ctx.isMRTmpFileURI(s)) {
-      work.setTblDir(ctx.localizeMRTmpFileURI(s));
-    }
-
-    ArrayList<String> ls = work.getPartDir();
-    if (ls != null) {
-      ctx.localizePaths(ls);
-    }
   }
 
   /**

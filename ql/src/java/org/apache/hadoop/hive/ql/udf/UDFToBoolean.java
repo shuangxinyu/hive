@@ -18,12 +18,17 @@
 
 package org.apache.hadoop.hive.ql.udf;
 
-import java.math.BigDecimal;
 
+import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.ql.exec.UDF;
-import org.apache.hadoop.hive.serde2.io.BigDecimalWritable;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedExpressions;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDecimalToBoolean;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.CastDoubleToBooleanViaDoubleToLong;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.CastLongToBooleanViaLongToLong;
 import org.apache.hadoop.hive.serde2.io.ByteWritable;
+import org.apache.hadoop.hive.serde2.io.DateWritable;
 import org.apache.hadoop.hive.serde2.io.DoubleWritable;
+import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.apache.hadoop.hive.serde2.io.ShortWritable;
 import org.apache.hadoop.hive.serde2.io.TimestampWritable;
 import org.apache.hadoop.io.BooleanWritable;
@@ -37,6 +42,8 @@ import org.apache.hadoop.io.Text;
  * UDFToBoolean.
  *
  */
+@VectorizedExpressions({CastLongToBooleanViaLongToLong.class,
+  CastDoubleToBooleanViaDoubleToLong.class, CastDecimalToBoolean.class})
 public class UDFToBoolean extends UDF {
   private final BooleanWritable booleanWritable = new BooleanWritable();
 
@@ -166,6 +173,11 @@ public class UDFToBoolean extends UDF {
     }
   }
 
+  public BooleanWritable evaluate(DateWritable d) {
+    // date value to boolean doesn't make any sense.
+    return null;
+  }
+
   public BooleanWritable evaluate(TimestampWritable i) {
     if (i == null) {
       return null;
@@ -175,11 +187,11 @@ public class UDFToBoolean extends UDF {
     }
   }
 
-  public BooleanWritable evaluate(BigDecimalWritable i) {
+  public BooleanWritable evaluate(HiveDecimalWritable i) {
     if (i == null) {
       return null;
     } else {
-      booleanWritable.set(BigDecimal.ZERO.compareTo(i.getBigDecimal()) != 0);
+      booleanWritable.set(HiveDecimal.ZERO.compareTo(i.getHiveDecimal()) != 0);
       return booleanWritable;
     }
   }

@@ -21,25 +21,29 @@ package org.apache.hadoop.hive.serde2;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Properties;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.hive.common.JavaUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.hive.serde2.objectinspector.ListObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.MapObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.StandardStructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.UnionObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.BigDecimalObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.BinaryObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.BooleanObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.ByteObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.DateObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.DoubleObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.FloatObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveCharObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveDecimalObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveVarcharObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.IntObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.LongObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.ShortObjectInspector;
@@ -65,77 +69,7 @@ public final class SerDeUtils {
   // lower case null is used within json objects
   private static final String JSON_NULL = "null";
 
-  private static ConcurrentHashMap<String, Class<?>> serdes =
-    new ConcurrentHashMap<String, Class<?>>();
-
   public static final Log LOG = LogFactory.getLog(SerDeUtils.class.getName());
-
-  public static void registerSerDe(String name, Class<?> serde) {
-    if (serdes.containsKey(name)) {
-      LOG.warn("double registering serde " + name);
-      return;
-    }
-    serdes.put(name, serde);
-  }
-
-  public static Deserializer lookupDeserializer(String name) throws SerDeException {
-    Class<?> c;
-    if (serdes.containsKey(name)) {
-      c = serdes.get(name);
-    } else {
-      try {
-        c = Class.forName(name, true, JavaUtils.getClassLoader());
-      } catch (ClassNotFoundException e) {
-        throw new SerDeException("SerDe " + name + " does not exist");
-      }
-    }
-    try {
-      return (Deserializer) c.newInstance();
-    } catch (Exception e) {
-      throw new SerDeException(e);
-    }
-  }
-
-  private static List<String> nativeSerDeNames = new ArrayList<String>();
-  static {
-    nativeSerDeNames
-        .add(org.apache.hadoop.hive.serde2.dynamic_type.DynamicSerDe.class
-        .getName());
-    nativeSerDeNames
-        .add(org.apache.hadoop.hive.serde2.MetadataTypedColumnsetSerDe.class
-        .getName());
-    // For backward compatibility
-    nativeSerDeNames.add("org.apache.hadoop.hive.serde.thrift.columnsetSerDe");
-    nativeSerDeNames
-        .add(org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe.class.getName());
-    nativeSerDeNames.add(org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe.class.getName());
-  }
-
-  public static boolean shouldGetColsFromSerDe(String serde) {
-    return (serde != null) && !nativeSerDeNames.contains(serde);
-  }
-
-  private static boolean initCoreSerDes = registerCoreSerDes();
-
-  protected static boolean registerCoreSerDes() {
-    // Eagerly load SerDes so they will register their symbolic names even on
-    // Lazy Loading JVMs
-    try {
-      // loading these classes will automatically register the short names
-      Class
-          .forName(org.apache.hadoop.hive.serde2.MetadataTypedColumnsetSerDe.class
-          .getName());
-      Class.forName(org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe.class
-          .getName());
-      Class
-          .forName(org.apache.hadoop.hive.serde2.thrift.ThriftDeserializer.class
-          .getName());
-    } catch (ClassNotFoundException e) {
-      throw new RuntimeException(
-          "IMPOSSIBLE Exception: Unable to initialize core serdes", e);
-    }
-    return true;
-  }
 
   /**
    * Escape a String in JSON format.
@@ -218,6 +152,32 @@ public final class SerDeUtils {
     return (escape.toString());
   }
 
+  /**
+   * Convert a Object to a standard Java object in compliance with JDBC 3.0 (see JDBC 3.0
+   * Specification, Table B-3: Mapping from JDBC Types to Java Object Types).
+   *
+   * This method is kept consistent with {@link HiveResultSetMetaData#hiveTypeToSqlType}.
+   */
+  public static Object toThriftPayload(Object val, ObjectInspector valOI, int version) {
+    if (valOI.getCategory() == ObjectInspector.Category.PRIMITIVE) {
+      if (val == null) {
+        return null;
+      }
+      Object obj = ObjectInspectorUtils.copyToStandardObject(val, valOI,
+          ObjectInspectorUtils.ObjectInspectorCopyOption.JAVA);
+      // uses string type for binary before HIVE_CLI_SERVICE_PROTOCOL_V6
+      if (version < 5 && ((PrimitiveObjectInspector)valOI).getPrimitiveCategory() ==
+          PrimitiveObjectInspector.PrimitiveCategory.BINARY) {
+        // todo HIVE-5269
+        return new String((byte[])obj);
+      }
+      return obj;
+    }
+    // for now, expose non-primitive as a string
+    // TODO: expose non-primitive as a structured object while maintaining JDBC compliance
+    return SerDeUtils.getJSONString(val, valOI);
+  }
+
   public static String getJSONString(Object o, ObjectInspector oi) {
     return getJSONString(o, oi, JSON_NULL);
   }
@@ -283,6 +243,27 @@ public final class SerDeUtils {
           sb.append('"');
           break;
         }
+        case CHAR: {
+          sb.append('"');
+          sb.append(escapeString(((HiveCharObjectInspector) poi)
+              .getPrimitiveJavaObject(o).toString()));
+          sb.append('"');
+          break;
+        }
+        case VARCHAR: {
+          sb.append('"');
+          sb.append(escapeString(((HiveVarcharObjectInspector) poi)
+              .getPrimitiveJavaObject(o).toString()));
+          sb.append('"');
+          break;
+        }
+        case DATE: {
+          sb.append('"');
+          sb.append(((DateObjectInspector) poi)
+              .getPrimitiveWritableObject(o));
+          sb.append('"');
+          break;
+        }
         case TIMESTAMP: {
           sb.append('"');
           sb.append(((TimestampObjectInspector) poi)
@@ -298,7 +279,7 @@ public final class SerDeUtils {
           break;
         }
         case DECIMAL: {
-          sb.append(((BigDecimalObjectInspector) oi).getPrimitiveJavaObject(o));
+          sb.append(((HiveDecimalObjectInspector) oi).getPrimitiveJavaObject(o));
           break;
         }
         default:
@@ -397,7 +378,7 @@ public final class SerDeUtils {
   /**
    * return false though element is null if nullsafe flag is true for that
    */
-  public static boolean hasAnyNullObject(List o, StandardStructObjectInspector loi,
+  public static boolean hasAnyNullObject(List o, StructObjectInspector loi,
       boolean[] nullSafes) {
     List<? extends StructField> fields = loi.getAllStructFieldRefs();
     for (int i = 0; i < o.size();i++) {
@@ -504,6 +485,38 @@ public final class SerDeUtils {
     }
     default:
       throw new RuntimeException("Unknown type in ObjectInspector!");
+    }
+  }
+
+  /**
+   * Returns the union of table and partition properties,
+   * with partition properties taking precedence.
+   * @param tblProps
+   * @param partProps
+   * @return the overlayed properties
+   */
+  public static Properties createOverlayedProperties(Properties tblProps, Properties partProps) {
+    Properties props = new Properties(tblProps);
+    if (partProps != null) {
+      props.putAll(partProps);
+    }
+    return props;
+  }
+
+  /**
+   * Initializes a SerDe.
+   * @param serde
+   * @param tblProps
+   * @param partProps
+   * @throws SerDeException
+   */
+  public static void initializeSerDe(Deserializer deserializer, Configuration conf,
+                                            Properties tblProps, Properties partProps)
+                                                throws SerDeException {
+    if (deserializer instanceof AbstractSerDe) {
+      ((AbstractSerDe) deserializer).initialize(conf, tblProps, partProps);
+    } else {
+      deserializer.initialize(conf, createOverlayedProperties(tblProps, partProps));
     }
   }
 

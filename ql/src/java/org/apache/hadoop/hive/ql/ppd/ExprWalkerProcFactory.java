@@ -87,6 +87,10 @@ public final class ExprWalkerProcFactory {
           if (exp instanceof ExprNodeGenericFuncDesc) {
             isCandidate = false;
           }
+          if (exp instanceof ExprNodeColumnDesc && colAlias == null) {
+            ExprNodeColumnDesc column = (ExprNodeColumnDesc)exp;
+            colAlias = new String[]{column.getTabAlias(), column.getColumn()};
+          }
         }
         ctx.addConvertedNode(colref, exp);
         ctx.setIsCandidate(exp, isCandidate);
@@ -171,7 +175,7 @@ public final class ExprWalkerProcFactory {
         ExprNodeDesc ch = (ExprNodeDesc) nd.getChildren().get(i);
         ExprNodeDesc newCh = ctx.getConvertedNode(ch);
         if (newCh != null) {
-          expr.getChildExprs().set(i, newCh);
+          expr.getChildren().set(i, newCh);
           ch = newCh;
         }
         String chAlias = ctx.getAlias(ch);

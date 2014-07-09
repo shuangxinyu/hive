@@ -35,6 +35,7 @@ import org.apache.hadoop.hive.metastore.api.Index;
 import org.apache.hadoop.hive.ql.Driver;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Task;
+import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
 import org.apache.hadoop.hive.ql.index.IndexMetadataChangeTask;
@@ -74,18 +75,10 @@ public final class IndexUtils {
       Map<Table, List<Index>> indexes)
     throws HiveException {
     Hive hive = Hive.get(pctx.getConf());
-    Set<Partition> queryPartitions = null;
     // make sure each partition exists on the index table
     PrunedPartitionList queryPartitionList = pctx.getOpToPartList().get(tableScan);
-    if(queryPartitionList.getConfirmedPartns() != null
-        && !queryPartitionList.getConfirmedPartns().isEmpty()){
-      queryPartitions = queryPartitionList.getConfirmedPartns();
-    }else if(queryPartitionList.getUnknownPartns() != null
-        && !queryPartitionList.getUnknownPartns().isEmpty()){
-      queryPartitions = queryPartitionList.getUnknownPartns();
-    }
-
-    if(queryPartitions == null) {
+    Set<Partition> queryPartitions = queryPartitionList.getPartitions();
+    if (queryPartitions == null || queryPartitions.isEmpty()) {
       return null;
     }
 
@@ -173,8 +166,8 @@ public final class IndexUtils {
       Partition part) throws HiveException {
     LOG.info("checking index staleness...");
     try {
-      FileSystem partFs = part.getPartitionPath().getFileSystem(hive.getConf());
-      FileStatus partFss = partFs.getFileStatus(part.getPartitionPath());
+      FileSystem partFs = part.getDataLocation().getFileSystem(hive.getConf());
+      FileStatus partFss = partFs.getFileStatus(part.getDataLocation());
       String ts = index.getParameters().get(part.getSpec().toString());
       if (ts == null) {
         return false;
@@ -259,7 +252,7 @@ public final class IndexUtils {
     // Don't try to index optimize the query to build the index
     HiveConf.setBoolVar(builderConf, HiveConf.ConfVars.HIVEOPTINDEXFILTER, false);
     Driver driver = new Driver(builderConf);
-    driver.compile(command.toString());
+    driver.compile(command.toString(), false);
 
     Task<?> rootTask = driver.getPlan().getRootTasks().get(0);
     inputs.addAll(driver.getPlan().getInputs());
@@ -267,7 +260,8 @@ public final class IndexUtils {
 
     IndexMetadataChangeWork indexMetaChange = new IndexMetadataChangeWork(partSpec,
         indexTableName, dbName);
-    IndexMetadataChangeTask indexMetaChangeTsk = new IndexMetadataChangeTask();
+    IndexMetadataChangeTask indexMetaChangeTsk =
+        (IndexMetadataChangeTask) TaskFactory.get(indexMetaChange, builderConf);
     indexMetaChangeTsk.setWork(indexMetaChange);
     rootTask.addDependentTask(indexMetaChangeTsk);
 

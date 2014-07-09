@@ -1,5 +1,7 @@
 set hive.support.concurrency = true;
 
+-- SORT_QUERY_RESULTS
+
 SHOW DATABASES;
 
 -- CREATE with comment
@@ -58,7 +60,7 @@ SHOW TABLES;
 DESCRIBE EXTENDED test_table_like;
 
 -- LOAD and SELECT
-LOAD DATA LOCAL INPATH '../data/files/test.dat'
+LOAD DATA LOCAL INPATH '../../data/files/test.dat'
 OVERWRITE INTO TABLE test_table;
 SELECT * FROM test_table;
 
@@ -146,7 +148,7 @@ CREATE TABLE db1.src(key STRING, value STRING)
 STORED AS TEXTFILE;
 
 -- LOAD into foreign table
-LOAD DATA LOCAL INPATH '../data/files/kv1.txt'
+LOAD DATA LOCAL INPATH '../../data/files/kv1.txt'
 OVERWRITE INTO TABLE db1.src;
 
 -- SELECT from foreign table
@@ -158,7 +160,7 @@ PARTITIONED BY (ds STRING, hr STRING)
 STORED AS TEXTFILE;
 
 -- LOAD data into Partitioned foreign table
-LOAD DATA LOCAL INPATH '../data/files/kv1.txt'
+LOAD DATA LOCAL INPATH '../../data/files/kv1.txt'
 OVERWRITE INTO TABLE db1.srcpart
 PARTITION (ds='2008-04-08', hr='11');
 
@@ -191,7 +193,7 @@ SELECT * FROM (
   SELECT value FROM db1.conflict_name
 UNION ALL
   SELECT value FROM db2.conflict_name
-) subq ORDER BY value;
+) subq;
 
 -- TABLESAMPLES
 CREATE TABLE bucketized_src (key INT, value STRING)

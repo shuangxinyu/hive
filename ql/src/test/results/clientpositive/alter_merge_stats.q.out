@@ -1,25 +1,33 @@
 PREHOOK: query: create table src_rc_merge_test_stat(key int, value string) stored as rcfile
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table src_rc_merge_test_stat(key int, value string) stored as rcfile
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@src_rc_merge_test_stat
-PREHOOK: query: load data local inpath '../data/files/smbbucket_1.rc' into table src_rc_merge_test_stat
+PREHOOK: query: load data local inpath '../../data/files/smbbucket_1.rc' into table src_rc_merge_test_stat
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@src_rc_merge_test_stat
-POSTHOOK: query: load data local inpath '../data/files/smbbucket_1.rc' into table src_rc_merge_test_stat
+POSTHOOK: query: load data local inpath '../../data/files/smbbucket_1.rc' into table src_rc_merge_test_stat
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@src_rc_merge_test_stat
-PREHOOK: query: load data local inpath '../data/files/smbbucket_2.rc' into table src_rc_merge_test_stat
+PREHOOK: query: load data local inpath '../../data/files/smbbucket_2.rc' into table src_rc_merge_test_stat
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@src_rc_merge_test_stat
-POSTHOOK: query: load data local inpath '../data/files/smbbucket_2.rc' into table src_rc_merge_test_stat
+POSTHOOK: query: load data local inpath '../../data/files/smbbucket_2.rc' into table src_rc_merge_test_stat
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@src_rc_merge_test_stat
-PREHOOK: query: load data local inpath '../data/files/smbbucket_3.rc' into table src_rc_merge_test_stat
+PREHOOK: query: load data local inpath '../../data/files/smbbucket_3.rc' into table src_rc_merge_test_stat
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@src_rc_merge_test_stat
-POSTHOOK: query: load data local inpath '../data/files/smbbucket_3.rc' into table src_rc_merge_test_stat
+POSTHOOK: query: load data local inpath '../../data/files/smbbucket_3.rc' into table src_rc_merge_test_stat
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@src_rc_merge_test_stat
 PREHOOK: query: show table extended like `src_rc_merge_test_stat`
 PREHOOK: type: SHOW_TABLESTATUS
@@ -40,12 +48,12 @@ minFileSize:206
 
 PREHOOK: query: desc extended src_rc_merge_test_stat
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@src_rc_merge_test_stat
 POSTHOOK: query: desc extended src_rc_merge_test_stat
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-key                 	int                 	None                
-value               	string              	None                
+POSTHOOK: Input: default@src_rc_merge_test_stat
+key                 	int                 	                    
+value               	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: analyze table src_rc_merge_test_stat compute statistics
@@ -58,12 +66,12 @@ POSTHOOK: Input: default@src_rc_merge_test_stat
 POSTHOOK: Output: default@src_rc_merge_test_stat
 PREHOOK: query: desc extended src_rc_merge_test_stat
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@src_rc_merge_test_stat
 POSTHOOK: query: desc extended src_rc_merge_test_stat
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-key                 	int                 	None                
-value               	string              	None                
+POSTHOOK: Input: default@src_rc_merge_test_stat
+key                 	int                 	                    
+value               	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: alter table src_rc_merge_test_stat concatenate
@@ -93,43 +101,51 @@ minFileSize:239
 
 PREHOOK: query: desc extended src_rc_merge_test_stat
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@src_rc_merge_test_stat
 POSTHOOK: query: desc extended src_rc_merge_test_stat
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-key                 	int                 	None                
-value               	string              	None                
+POSTHOOK: Input: default@src_rc_merge_test_stat
+key                 	int                 	                    
+value               	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: create table src_rc_merge_test_part_stat(key int, value string) partitioned by (ds string) stored as rcfile
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table src_rc_merge_test_part_stat(key int, value string) partitioned by (ds string) stored as rcfile
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@src_rc_merge_test_part_stat
 PREHOOK: query: alter table src_rc_merge_test_part_stat add partition (ds='2011')
 PREHOOK: type: ALTERTABLE_ADDPARTS
-PREHOOK: Input: default@src_rc_merge_test_part_stat
+PREHOOK: Output: default@src_rc_merge_test_part_stat
 POSTHOOK: query: alter table src_rc_merge_test_part_stat add partition (ds='2011')
 POSTHOOK: type: ALTERTABLE_ADDPARTS
-POSTHOOK: Input: default@src_rc_merge_test_part_stat
+POSTHOOK: Output: default@src_rc_merge_test_part_stat
 POSTHOOK: Output: default@src_rc_merge_test_part_stat@ds=2011
-PREHOOK: query: load data local inpath '../data/files/smbbucket_1.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
+PREHOOK: query: load data local inpath '../../data/files/smbbucket_1.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@src_rc_merge_test_part_stat@ds=2011
-POSTHOOK: query: load data local inpath '../data/files/smbbucket_1.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
+POSTHOOK: query: load data local inpath '../../data/files/smbbucket_1.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@src_rc_merge_test_part_stat@ds=2011
-PREHOOK: query: load data local inpath '../data/files/smbbucket_2.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
+PREHOOK: query: load data local inpath '../../data/files/smbbucket_2.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@src_rc_merge_test_part_stat@ds=2011
-POSTHOOK: query: load data local inpath '../data/files/smbbucket_2.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
+POSTHOOK: query: load data local inpath '../../data/files/smbbucket_2.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@src_rc_merge_test_part_stat@ds=2011
-PREHOOK: query: load data local inpath '../data/files/smbbucket_3.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
+PREHOOK: query: load data local inpath '../../data/files/smbbucket_3.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@src_rc_merge_test_part_stat@ds=2011
-POSTHOOK: query: load data local inpath '../data/files/smbbucket_3.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
+POSTHOOK: query: load data local inpath '../../data/files/smbbucket_3.rc' into table src_rc_merge_test_part_stat partition (ds='2011')
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@src_rc_merge_test_part_stat@ds=2011
 PREHOOK: query: show table extended like `src_rc_merge_test_part_stat` partition (ds='2011')
 PREHOOK: type: SHOW_TABLESTATUS
@@ -150,18 +166,18 @@ minFileSize:206
 
 PREHOOK: query: desc extended src_rc_merge_test_part_stat
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@src_rc_merge_test_part_stat
 POSTHOOK: query: desc extended src_rc_merge_test_part_stat
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-key                 	int                 	None                
-value               	string              	None                
-ds                  	string              	None                
+POSTHOOK: Input: default@src_rc_merge_test_part_stat
+key                 	int                 	                    
+value               	string              	                    
+ds                  	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-ds                  	string              	None                
+ds                  	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: analyze table src_rc_merge_test_part_stat partition(ds='2011') compute statistics
@@ -178,18 +194,18 @@ POSTHOOK: Output: default@src_rc_merge_test_part_stat
 POSTHOOK: Output: default@src_rc_merge_test_part_stat@ds=2011
 PREHOOK: query: desc extended src_rc_merge_test_part_stat
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@src_rc_merge_test_part_stat
 POSTHOOK: query: desc extended src_rc_merge_test_part_stat
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-key                 	int                 	None                
-value               	string              	None                
-ds                  	string              	None                
+POSTHOOK: Input: default@src_rc_merge_test_part_stat
+key                 	int                 	                    
+value               	string              	                    
+ds                  	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-ds                  	string              	None                
+ds                  	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: alter table src_rc_merge_test_part_stat partition (ds='2011') concatenate
@@ -219,18 +235,18 @@ minFileSize:239
 
 PREHOOK: query: desc extended src_rc_merge_test_part_stat
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@src_rc_merge_test_part_stat
 POSTHOOK: query: desc extended src_rc_merge_test_part_stat
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-key                 	int                 	None                
-value               	string              	None                
-ds                  	string              	None                
+POSTHOOK: Input: default@src_rc_merge_test_part_stat
+key                 	int                 	                    
+value               	string              	                    
+ds                  	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-ds                  	string              	None                
+ds                  	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: drop table src_rc_merge_test_stat

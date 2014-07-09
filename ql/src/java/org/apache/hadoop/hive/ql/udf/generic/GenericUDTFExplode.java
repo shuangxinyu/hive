@@ -42,8 +42,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
       + " or the elements of a map into multiple rows and columns ")
 public class GenericUDTFExplode extends GenericUDTF {
 
-  private ObjectInspector inputOI = null;
-
+  private transient ObjectInspector inputOI = null;
   @Override
   public void close() throws HiveException {
   }
@@ -78,8 +77,8 @@ public class GenericUDTFExplode extends GenericUDTF {
         fieldOIs);
   }
 
-  private final Object[] forwardListObj = new Object[1];
-  private final Object[] forwardMapObj = new Object[2];
+  private transient final Object[] forwardListObj = new Object[1];
+  private transient final Object[] forwardMapObj = new Object[2];
 
   @Override
   public void process(Object[] o) throws HiveException {

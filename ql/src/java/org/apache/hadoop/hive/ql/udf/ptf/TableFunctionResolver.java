@@ -18,17 +18,16 @@
 
 package org.apache.hadoop.hive.ql.udf.ptf;
 
-import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluator;
 import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.PTFDesc;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.PartitionedTableFunctionDef;
+import org.apache.hadoop.hive.ql.plan.ptf.PartitionedTableFunctionDef;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFResolver;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 
@@ -54,8 +53,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
  * </ol>
  */
 @SuppressWarnings("deprecation")
-public abstract class TableFunctionResolver
-{
+public abstract class TableFunctionResolver {
   TableFunctionEvaluator evaluator;
   PTFDesc ptfDesc;
 
@@ -66,35 +64,27 @@ public abstract class TableFunctionResolver
    *   the transformsRawInput boolean.
    */
   public void initialize(HiveConf cfg, PTFDesc ptfDesc, PartitionedTableFunctionDef tDef)
-      throws SemanticException
-  {
+      throws SemanticException {
     this.ptfDesc = ptfDesc;
-    String partitionClass = HiveConf.getVar(cfg, ConfVars.HIVE_PTF_PARTITION_PERSISTENCE_CLASS);
-    int partitionMemSize = HiveConf.getIntVar(cfg, ConfVars.HIVE_PTF_PARTITION_PERSISTENT_SIZE);
 
     evaluator = createEvaluator(ptfDesc, tDef);
     evaluator.setTransformsRawInput(transformsRawInput());
     evaluator.setTableDef(tDef);
     evaluator.setQueryDef(ptfDesc);
-    evaluator.setPartitionClass(partitionClass);
-    evaluator.setPartitionMemSize(partitionMemSize);
-
   }
 
   /*
    * called during deserialization of a QueryDef during runtime.
    */
   public void initialize(PTFDesc ptfDesc, PartitionedTableFunctionDef tDef, TableFunctionEvaluator evaluator)
-      throws HiveException
-  {
+      throws HiveException {
     this.evaluator = evaluator;
     this.ptfDesc = ptfDesc;
     evaluator.setTableDef(tDef);
     evaluator.setQueryDef(ptfDesc);
   }
 
-  public TableFunctionEvaluator getEvaluator()
-  {
+  public TableFunctionEvaluator getEvaluator() {
     return evaluator;
   }
 
@@ -111,7 +101,7 @@ public abstract class TableFunctionResolver
    * A PTF Function must provide the 'external' names of the columns in its Output.
    *
    */
-  public abstract ArrayList<String> getOutputColumnNames() throws SemanticException;
+  public abstract List<String> getOutputColumnNames() throws SemanticException;
 
 
   /**
@@ -133,10 +123,8 @@ public abstract class TableFunctionResolver
    * - subsequent to this call, a call to getRawInputOI call on the {@link TableFunctionEvaluator} must return the OI
    *   of the output of this function.
    */
-  public void setupRawInputOI() throws SemanticException
-  {
-    if (!transformsRawInput())
-    {
+  public void setupRawInputOI() throws SemanticException {
+    if (!transformsRawInput()) {
       return;
     }
     throw new SemanticException(
@@ -147,9 +135,8 @@ public abstract class TableFunctionResolver
    * A PTF Function must provide the 'external' names of the columns in the transformed Raw Input.
    *
    */
-  public ArrayList<String> getRawInputColumnNames() throws SemanticException {
-    if (!transformsRawInput())
-    {
+  public List<String> getRawInputColumnNames() throws SemanticException {
+    if (!transformsRawInput()) {
       return null;
     }
     throw new SemanticException(
@@ -159,10 +146,8 @@ public abstract class TableFunctionResolver
   /*
    * Same responsibility as initializeOI, but for the RawInput.
    */
-  public void initializeRawInputOI() throws HiveException
-  {
-    if (!transformsRawInput())
-    {
+  public void initializeRawInputOI() throws HiveException {
+    if (!transformsRawInput()) {
       return;
     }
     throw new HiveException(
@@ -172,21 +157,18 @@ public abstract class TableFunctionResolver
   /*
    * callback method used by subclasses to set the RawInputOI on the Evaluator.
    */
-  protected void setRawInputOI(StructObjectInspector rawInputOI)
-  {
+  protected void setRawInputOI(StructObjectInspector rawInputOI) {
     evaluator.setRawInputOI(rawInputOI);
   }
 
   /*
    * callback method used by subclasses to set the OutputOI on the Evaluator.
    */
-  protected void setOutputOI(StructObjectInspector outputOI)
-  {
+  protected void setOutputOI(StructObjectInspector outputOI) {
     evaluator.setOutputOI(outputOI);
   }
 
-  public PTFDesc getPtfDesc()
-  {
+  public PTFDesc getPtfDesc() {
     return ptfDesc;
   }
 

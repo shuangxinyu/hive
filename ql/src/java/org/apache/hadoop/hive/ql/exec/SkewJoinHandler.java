@@ -38,6 +38,7 @@ import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.serde2.SerDe;
 import org.apache.hadoop.hive.serde2.SerDeException;
+import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
@@ -138,7 +139,7 @@ public class SkewJoinHandler {
       try {
         SerDe serializer = (SerDe) ReflectionUtils.newInstance(tblDesc.get(
             alias).getDeserializerClass(), null);
-        serializer.initialize(null, tblDesc.get(alias).getProperties());
+        SerDeUtils.initializeSerDe(serializer, null, tblDesc.get(alias).getProperties(), null);
         tblSerializers.put((byte) i, serializer);
       } catch (SerDeException e) {
         LOG.error("Skewjoin will be disabled due to " + e.getMessage(), e);
@@ -177,7 +178,7 @@ public class SkewJoinHandler {
   void endGroup() throws IOException, HiveException {
     if (skewKeyInCurrentGroup) {
 
-      String specPath = conf.getBigKeysDirMap().get((byte) currBigKeyTag);
+      Path specPath = conf.getBigKeysDirMap().get((byte) currBigKeyTag);
       RowContainer<ArrayList<Object>> bigKey = (RowContainer)joinOp.storage[currBigKeyTag];
       Path outputPath = getOperatorOutputPath(specPath);
       FileSystem destFs = outputPath.getFileSystem(hconf);
@@ -258,7 +259,7 @@ public class SkewJoinHandler {
         }
 
         try {
-          String specPath = conf.getBigKeysDirMap().get((byte) bigKeyTbl);
+          Path specPath = conf.getBigKeysDirMap().get((byte) bigKeyTbl);
           Path bigKeyPath = getOperatorOutputPath(specPath);
           FileSystem fs = bigKeyPath.getFileSystem(hconf);
           delete(bigKeyPath, fs);
@@ -295,7 +296,7 @@ public class SkewJoinHandler {
         continue;
       }
 
-      String specPath = conf.getBigKeysDirMap().get(
+      Path specPath = conf.getBigKeysDirMap().get(
           Byte.valueOf((byte) bigKeyTbl));
       commitOutputPathToFinalPath(specPath, false);
       for (int smallKeyTbl = 0; smallKeyTbl < numAliases; smallKeyTbl++) {
@@ -311,13 +312,11 @@ public class SkewJoinHandler {
     }
   }
 
-  private void commitOutputPathToFinalPath(String specPath,
+  private void commitOutputPathToFinalPath(Path specPath,
       boolean ignoreNonExisting) throws IOException {
     Path outPath = getOperatorOutputPath(specPath);
     Path finalPath = getOperatorFinalPath(specPath);
     FileSystem fs = outPath.getFileSystem(hconf);
-    // for local file system in Hadoop-0.17.2.1, it will throw IOException when
-    // file not existing.
     try {
       if (!fs.rename(outPath, finalPath)) {
         throw new IOException("Unable to rename output to: " + finalPath);
@@ -326,22 +325,15 @@ public class SkewJoinHandler {
       if (!ignoreNonExisting) {
         throw e;
       }
-    } catch (IOException e) {
-      if (!fs.exists(outPath) && ignoreNonExisting) {
-        return;
-      }
-      throw e;
     }
   }
 
-  private Path getOperatorOutputPath(String specPath) throws IOException {
-    Path tmpPath = Utilities.toTempPath(specPath);
-    return new Path(tmpPath, Utilities.toTempPath(taskId));
+  private Path getOperatorOutputPath(Path specPath) throws IOException {
+    return new Path(Utilities.toTempPath(specPath), Utilities.toTempPath(taskId));
   }
 
-  private Path getOperatorFinalPath(String specPath) throws IOException {
-    Path tmpPath = Utilities.toTempPath(specPath);
-    return new Path(tmpPath, taskId);
+  private Path getOperatorFinalPath(Path specPath) throws IOException {
+    return new Path(Utilities.toTempPath(specPath), taskId);
   }
 
   public void setSkewJoinJobCounter(LongWritable skewjoinFollowupJobs) {

@@ -18,7 +18,6 @@
 package org.apache.hadoop.hive.ql.optimizer;
 
 import java.io.IOException;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -29,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Stack;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileStatus;
@@ -45,7 +43,6 @@ import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.metadata.Table;
-import org.apache.hadoop.hive.ql.optimizer.ppr.PartitionPruner;
 import org.apache.hadoop.hive.ql.parse.ParseContext;
 import org.apache.hadoop.hive.ql.parse.PrunedPartitionList;
 import org.apache.hadoop.hive.ql.parse.QB;
@@ -77,11 +74,11 @@ abstract public class AbstractBucketJoinProc implements NodeProcessor {
   abstract public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx,
       Object... nodeOutputs) throws SemanticException;
 
-  private static List<String> getBucketFilePathsOfPartition(
-      URI location, ParseContext pGraphContext) throws SemanticException {
+  public static List<String> getBucketFilePathsOfPartition(
+      Path location, ParseContext pGraphContext) throws SemanticException {
     List<String> fileNames = new ArrayList<String>();
     try {
-      FileSystem fs = FileSystem.get(location, pGraphContext.getConf());
+      FileSystem fs = location.getFileSystem(pGraphContext.getConf());
       FileStatus[] files = fs.listStatus(new Path(location.toString()));
       if (files != null) {
         for (FileStatus file : files) {
@@ -136,7 +133,7 @@ abstract public class AbstractBucketJoinProc implements NodeProcessor {
       ParseContext pGraphContext,
       BucketJoinProcCtx context) throws SemanticException {
 
-    QBJoinTree joinCtx = this.pGraphContext.getMapJoinContext().get(mapJoinOp);
+    QBJoinTree joinCtx = pGraphContext.getMapJoinContext().get(mapJoinOp);
     if (joinCtx == null) {
       return false;
     }
@@ -270,14 +267,7 @@ abstract public class AbstractBucketJoinProc implements NodeProcessor {
       if (tbl.isPartitioned()) {
         PrunedPartitionList prunedParts;
         try {
-          prunedParts = pGraphContext.getOpToPartList().get(tso);
-          if (prunedParts == null) {
-            prunedParts =
-                PartitionPruner.prune(tbl, pGraphContext.getOpToPartPruner().get(tso),
-                    pGraphContext.getConf(), alias,
-                    pGraphContext.getPrunedPartitions());
-            pGraphContext.getOpToPartList().put(tso, prunedParts);
-          }
+          prunedParts = pGraphContext.getPrunedPartitions(alias, tso);
         } catch (HiveException e) {
           // Has to use full name to make sure it does not conflict with
           // org.apache.commons.lang.StringUtils
@@ -303,7 +293,7 @@ abstract public class AbstractBucketJoinProc implements NodeProcessor {
             // The number of files for the table should be same as number of buckets.
             int bucketCount = p.getBucketCount();
 
-            if (fileNames.size() != bucketCount) {
+            if (fileNames.size() != 0 && fileNames.size() != bucketCount) {
               String msg = "The number of buckets for table " +
                   tbl.getTableName() + " partition " + p.getName() + " is " +
                   p.getBucketCount() + ", whereas the number of files is " + fileNames.size();
@@ -333,7 +323,7 @@ abstract public class AbstractBucketJoinProc implements NodeProcessor {
         Integer num = new Integer(tbl.getNumBuckets());
 
         // The number of files for the table should be same as number of buckets.
-        if (fileNames.size() != num) {
+        if (fileNames.size() != 0 && fileNames.size() != num) {
           String msg = "The number of buckets for table " +
               tbl.getTableName() + " is " + tbl.getNumBuckets() +
               ", whereas the number of files is " + fileNames.size();
@@ -463,7 +453,7 @@ abstract public class AbstractBucketJoinProc implements NodeProcessor {
     return converted;
   }
 
-  public List<String> toColumns(List<ExprNodeDesc> keys) {
+  public static List<String> toColumns(List<ExprNodeDesc> keys) {
     List<String> columns = new ArrayList<String>();
     for (ExprNodeDesc key : keys) {
       if (!(key instanceof ExprNodeColumnDesc)) {

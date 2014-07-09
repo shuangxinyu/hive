@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.hive.ql.security.authorization;
 
+import java.util.List;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -41,8 +43,6 @@ import org.apache.hadoop.hive.metastore.events.PreEventContext;
 import org.apache.hadoop.hive.ql.metadata.AuthorizationException;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.HiveUtils;
-import org.apache.hadoop.hive.ql.metadata.Partition;
-import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.plan.HiveOperation;
 import org.apache.hadoop.hive.ql.security.HiveMetastoreAuthenticationProvider;
 
@@ -59,25 +59,72 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
   public static final Log LOG = LogFactory.getLog(
       AuthorizationPreEventListener.class);
 
-  private static HiveConf conf;
-  private static HiveMetastoreAuthorizationProvider authorizer;
-  private static HiveMetastoreAuthenticationProvider authenticator;
+  private final ThreadLocal<Configuration> tConfig = new ThreadLocal<Configuration>() {
+    @Override
+    protected Configuration initialValue() {
+      return new HiveConf(AuthorizationPreEventListener.class);
+    }
+  };
+
+  private final ThreadLocal<HiveMetastoreAuthenticationProvider> tAuthenticator
+      = new ThreadLocal<HiveMetastoreAuthenticationProvider>() {
+    @Override
+    protected HiveMetastoreAuthenticationProvider initialValue() {
+      try {
+        return  (HiveMetastoreAuthenticationProvider) HiveUtils.getAuthenticator(
+            tConfig.get(), HiveConf.ConfVars.HIVE_METASTORE_AUTHENTICATOR_MANAGER);
+      } catch (HiveException he) {
+        throw new IllegalStateException("Authentication provider instantiation failure",he);
+      }
+    }
+  };
+
+  private final ThreadLocal<List<HiveMetastoreAuthorizationProvider>> tAuthorizers
+      = new ThreadLocal<List<HiveMetastoreAuthorizationProvider>>() {
+    @Override
+    protected List<HiveMetastoreAuthorizationProvider> initialValue() {
+      try {
+        return  HiveUtils.getMetaStoreAuthorizeProviderManagers(
+            tConfig.get(), HiveConf.ConfVars.HIVE_METASTORE_AUTHORIZATION_MANAGER, tAuthenticator.get());
+      } catch (HiveException he) {
+        throw new IllegalStateException("Authorization provider instantiation failure",he);
+      }
+    }
+  };
+
+  private final ThreadLocal<Boolean> tConfigSetOnAuths = new ThreadLocal<Boolean>() {
+    @Override
+    protected Boolean initialValue() {
+      return false;
+    }
+  };
 
   public AuthorizationPreEventListener(Configuration config) throws HiveException {
     super(config);
-
-    authenticator = (HiveMetastoreAuthenticationProvider) HiveUtils.getAuthenticator(
-        config, HiveConf.ConfVars.HIVE_METASTORE_AUTHENTICATOR_MANAGER);
-    authorizer = (HiveMetastoreAuthorizationProvider) HiveUtils.getAuthorizeProviderManager(
-        config, HiveConf.ConfVars.HIVE_METASTORE_AUTHORIZATION_MANAGER, authenticator);
   }
 
   @Override
   public void onEvent(PreEventContext context) throws MetaException, NoSuchObjectException,
       InvalidOperationException {
 
-    authenticator.setMetaStoreHandler(context.getHandler());
-    authorizer.setMetaStoreHandler(context.getHandler());
+    if (!tConfigSetOnAuths.get()){
+      // The reason we do this guard is because when we do not have a good way of initializing
+      // the config to the handler's thread local config until this call, so we do it then.
+      // Once done, though, we need not repeat this linking, we simply call setMetaStoreHandler
+      // and let the AuthorizationProvider and AuthenticationProvider do what they want.
+      tConfig.set(context.getHandler().getConf());
+      // Warning note : HMSHandler.getHiveConf() is not thread-unique, .getConf() is.
+      tAuthenticator.get().setConf(tConfig.get());
+      for(HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()){
+        authorizer.setConf(tConfig.get());
+      }
+      tConfigSetOnAuths.set(true); // set so we don't repeat this initialization
+    }
+
+    tAuthenticator.get().setMetaStoreHandler(context.getHandler());
+    for(HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()){
+      authorizer.setMetaStoreHandler(context.getHandler());
+    }
 
     switch (context.getEventType()) {
     case CREATE_TABLE:
@@ -107,18 +154,34 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
     case LOAD_PARTITION_DONE:
       // noop for now
       break;
+    case AUTHORIZATION_API_CALL:
+      authorizeAuthorizationAPICall();
     default:
       break;
     }
 
   }
 
+  private void authorizeAuthorizationAPICall() throws InvalidOperationException, MetaException {
+    for (HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()) {
+      try {
+        authorizer.authorizeAuthorizationApiInvocation();
+      } catch (AuthorizationException e) {
+        throw invalidOperationException(e);
+      } catch (HiveException e) {
+        throw metaException(e);
+      }
+    }
+  }
+
   private void authorizeCreateDatabase(PreCreateDatabaseEvent context)
       throws InvalidOperationException, MetaException {
     try {
-      authorizer.authorize(new Database(context.getDatabase()),
-          HiveOperation.CREATEDATABASE.getInputRequiredPrivileges(),
-          HiveOperation.CREATEDATABASE.getOutputRequiredPrivileges());
+      for (HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()) {
+        authorizer.authorize(new Database(context.getDatabase()),
+            HiveOperation.CREATEDATABASE.getInputRequiredPrivileges(),
+            HiveOperation.CREATEDATABASE.getOutputRequiredPrivileges());
+      }
     } catch (AuthorizationException e) {
       throw invalidOperationException(e);
     } catch (HiveException e) {
@@ -129,9 +192,11 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
   private void authorizeDropDatabase(PreDropDatabaseEvent context)
       throws InvalidOperationException, MetaException {
     try {
-      authorizer.authorize(new Database(context.getDatabase()),
-          HiveOperation.DROPDATABASE.getInputRequiredPrivileges(),
-          HiveOperation.DROPDATABASE.getOutputRequiredPrivileges());
+      for (HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()) {
+        authorizer.authorize(new Database(context.getDatabase()),
+            HiveOperation.DROPDATABASE.getInputRequiredPrivileges(),
+            HiveOperation.DROPDATABASE.getOutputRequiredPrivileges());
+      }
     } catch (AuthorizationException e) {
       throw invalidOperationException(e);
     } catch (HiveException e) {
@@ -142,9 +207,12 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
   private void authorizeCreateTable(PreCreateTableEvent context)
       throws InvalidOperationException, MetaException {
     try {
-      authorizer.authorize(getTableFromApiTable(context.getTable()),
-          HiveOperation.CREATETABLE.getInputRequiredPrivileges(),
-          HiveOperation.CREATETABLE.getOutputRequiredPrivileges());
+      org.apache.hadoop.hive.ql.metadata.Table wrappedTable = new TableWrapper(context.getTable());
+      for (HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()) {
+        authorizer.authorize(wrappedTable,
+            HiveOperation.CREATETABLE.getInputRequiredPrivileges(),
+            HiveOperation.CREATETABLE.getOutputRequiredPrivileges());
+      }
     } catch (AuthorizationException e) {
       throw invalidOperationException(e);
     } catch (HiveException e) {
@@ -155,9 +223,12 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
   private void authorizeDropTable(PreDropTableEvent context)
       throws InvalidOperationException, MetaException {
     try {
-      authorizer.authorize(getTableFromApiTable(context.getTable()),
-          HiveOperation.DROPTABLE.getInputRequiredPrivileges(),
-          HiveOperation.DROPTABLE.getOutputRequiredPrivileges());
+      org.apache.hadoop.hive.ql.metadata.Table wrappedTable = new TableWrapper(context.getTable());
+      for (HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()) {
+        authorizer.authorize(wrappedTable,
+            HiveOperation.DROPTABLE.getInputRequiredPrivileges(),
+            HiveOperation.DROPTABLE.getOutputRequiredPrivileges());
+      }
     } catch (AuthorizationException e) {
       throw invalidOperationException(e);
     } catch (HiveException e) {
@@ -167,10 +238,14 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
 
   private void authorizeAlterTable(PreAlterTableEvent context)
       throws InvalidOperationException, MetaException {
+
     try {
-      authorizer.authorize(getTableFromApiTable(context.getOldTable()),
-          null,
-          new Privilege[]{Privilege.ALTER_METADATA});
+      org.apache.hadoop.hive.ql.metadata.Table wrappedTable = new TableWrapper(context.getOldTable());
+      for (HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()) {
+        authorizer.authorize(wrappedTable,
+            null,
+            new Privilege[]{Privilege.ALTER_METADATA});
+      }
     } catch (AuthorizationException e) {
       throw invalidOperationException(e);
     } catch (HiveException e) {
@@ -181,10 +256,15 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
   private void authorizeAddPartition(PreAddPartitionEvent context)
       throws InvalidOperationException, MetaException {
     try {
-      org.apache.hadoop.hive.metastore.api.Partition mapiPart = context.getPartition();
-      authorizer.authorize(getPartitionFromApiPartition(mapiPart, context),
-          HiveOperation.ALTERTABLE_ADDPARTS.getInputRequiredPrivileges(),
-          HiveOperation.ALTERTABLE_ADDPARTS.getOutputRequiredPrivileges());
+      for (org.apache.hadoop.hive.metastore.api.Partition mapiPart : context.getPartitions()) {
+        org.apache.hadoop.hive.ql.metadata.Partition wrappedPartiton = new PartitionWrapper(
+            mapiPart, context);
+    for(HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()){
+          authorizer.authorize(wrappedPartiton,
+              HiveOperation.ALTERTABLE_ADDPARTS.getInputRequiredPrivileges(),
+              HiveOperation.ALTERTABLE_ADDPARTS.getOutputRequiredPrivileges());
+        }
+      }
     } catch (AuthorizationException e) {
       throw invalidOperationException(e);
     } catch (NoSuchObjectException e) {
@@ -198,9 +278,13 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
       throws InvalidOperationException, MetaException {
     try {
       org.apache.hadoop.hive.metastore.api.Partition mapiPart = context.getPartition();
-      authorizer.authorize(getPartitionFromApiPartition(mapiPart, context),
-          HiveOperation.ALTERTABLE_DROPPARTS.getInputRequiredPrivileges(),
-          HiveOperation.ALTERTABLE_DROPPARTS.getOutputRequiredPrivileges());
+      org.apache.hadoop.hive.ql.metadata.Partition wrappedPartition = new PartitionWrapper(
+          mapiPart, context);
+ for (HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()) {
+        authorizer.authorize(wrappedPartition,
+            HiveOperation.ALTERTABLE_DROPPARTS.getInputRequiredPrivileges(),
+            HiveOperation.ALTERTABLE_DROPPARTS.getOutputRequiredPrivileges());
+      }
     } catch (AuthorizationException e) {
       throw invalidOperationException(e);
     } catch (NoSuchObjectException e) {
@@ -214,9 +298,13 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
       throws InvalidOperationException, MetaException {
     try {
       org.apache.hadoop.hive.metastore.api.Partition mapiPart = context.getNewPartition();
-      authorizer.authorize(getPartitionFromApiPartition(mapiPart, context),
-          null,
-          new Privilege[]{Privilege.ALTER_METADATA});
+      org.apache.hadoop.hive.ql.metadata.Partition wrappedPartition = new PartitionWrapper(
+          mapiPart, context);
+    for (HiveMetastoreAuthorizationProvider authorizer : tAuthorizers.get()) {
+       authorizer.authorize(wrappedPartition,
+            null,
+            new Privilege[]{Privilege.ALTER_METADATA});
+      }
     } catch (AuthorizationException e) {
       throw invalidOperationException(e);
     } catch (NoSuchObjectException e) {
@@ -224,41 +312,6 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
     } catch (HiveException e) {
       throw metaException(e);
     }
-  }
-
-  private Table getTableFromApiTable(org.apache.hadoop.hive.metastore.api.Table apiTable) {
-    org.apache.hadoop.hive.metastore.api.Table tTable = apiTable.deepCopy();
-    if (tTable.getTableType() == null){
-      // TableType specified was null, we need to figure out what type it was.
-      if (MetaStoreUtils.isExternalTable(tTable)){
-        tTable.setTableType(TableType.EXTERNAL_TABLE.toString());
-      } else if (MetaStoreUtils.isIndexTable(tTable)) {
-        tTable.setTableType(TableType.INDEX_TABLE.toString());
-      } else if ((tTable.getSd() == null) || (tTable.getSd().getLocation() == null)) {
-        tTable.setTableType(TableType.VIRTUAL_VIEW.toString());
-      } else {
-        tTable.setTableType(TableType.MANAGED_TABLE.toString());
-      }
-    }
-    Table tbl = new Table(tTable);
-    return tbl;
-  }
-
-  private Partition getPartitionFromApiPartition(
-      org.apache.hadoop.hive.metastore.api.Partition mapiPart,
-      PreEventContext context) throws HiveException, NoSuchObjectException, MetaException {
-    org.apache.hadoop.hive.metastore.api.Partition tPart = mapiPart.deepCopy();
-    org.apache.hadoop.hive.metastore.api.Table t = context.getHandler().get_table(
-        mapiPart.getDbName(), mapiPart.getTableName());
-    if (tPart.getSd() == null){
-      // In the cases of create partition, by the time this event fires, the partition
-      // object has not yet come into existence, and thus will not yet have a
-      // location or an SD, but these are needed to create a ql.metadata.Partition,
-      // so we use the table's SD. The only place this is used is by the
-      // authorization hooks, so we will not affect code flow in the metastore itself.
-      tPart.setSd(t.getSd());
-    }
-    return new Partition(getTableFromApiTable(t),tPart);
   }
 
   private InvalidOperationException invalidOperationException(Exception e) {
@@ -271,6 +324,52 @@ public class AuthorizationPreEventListener extends MetaStorePreEventListener {
     MetaException ex =  new MetaException(e.getMessage());
     ex.initCause(e);
     return ex;
+  }
+
+  // Wrapper extends ql.metadata.Table for easy construction syntax
+  public static class TableWrapper extends org.apache.hadoop.hive.ql.metadata.Table {
+
+    public TableWrapper(org.apache.hadoop.hive.metastore.api.Table apiTable) {
+      org.apache.hadoop.hive.metastore.api.Table wrapperApiTable = apiTable.deepCopy();
+      if (wrapperApiTable.getTableType() == null){
+        // TableType specified was null, we need to figure out what type it was.
+        if (MetaStoreUtils.isExternalTable(wrapperApiTable)){
+          wrapperApiTable.setTableType(TableType.EXTERNAL_TABLE.toString());
+        } else if (MetaStoreUtils.isIndexTable(wrapperApiTable)) {
+          wrapperApiTable.setTableType(TableType.INDEX_TABLE.toString());
+        } else if ((wrapperApiTable.getSd() == null) || (wrapperApiTable.getSd().getLocation() == null)) {
+          wrapperApiTable.setTableType(TableType.VIRTUAL_VIEW.toString());
+        } else {
+          wrapperApiTable.setTableType(TableType.MANAGED_TABLE.toString());
+        }
+      }
+      initialize(wrapperApiTable);
+    }
+  }
+
+  // Wrapper extends ql.metadata.Partition for easy construction syntax
+  public static class PartitionWrapper extends org.apache.hadoop.hive.ql.metadata.Partition {
+
+    public PartitionWrapper(org.apache.hadoop.hive.ql.metadata.Table table,
+        org.apache.hadoop.hive.metastore.api.Partition mapiPart) throws HiveException {
+      initialize(table,mapiPart);
+    }
+
+    public PartitionWrapper(org.apache.hadoop.hive.metastore.api.Partition mapiPart,
+        PreEventContext context) throws HiveException, NoSuchObjectException, MetaException {
+      org.apache.hadoop.hive.metastore.api.Partition wrapperApiPart = mapiPart.deepCopy();
+      org.apache.hadoop.hive.metastore.api.Table t = context.getHandler().get_table(
+          mapiPart.getDbName(), mapiPart.getTableName());
+      if (wrapperApiPart.getSd() == null){
+        // In the cases of create partition, by the time this event fires, the partition
+        // object has not yet come into existence, and thus will not yet have a
+        // location or an SD, but these are needed to create a ql.metadata.Partition,
+        // so we use the table's SD. The only place this is used is by the
+        // authorization hooks, so we will not affect code flow in the metastore itself.
+        wrapperApiPart.setSd(t.getSd());
+      }
+      initialize(new TableWrapper(t),wrapperApiPart);
+    }
   }
 
 }

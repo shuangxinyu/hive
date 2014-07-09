@@ -23,15 +23,42 @@ import java.nio.ByteBuffer;
 class OutStream extends PositionedOutputStream {
 
   interface OutputReceiver {
+    /**
+     * Output the given buffer to the final destination
+     * @param buffer the buffer to output
+     * @throws IOException
+     */
     void output(ByteBuffer buffer) throws IOException;
   }
 
   static final int HEADER_SIZE = 3;
   private final String name;
   private final OutputReceiver receiver;
+  // if enabled the stream will be suppressed when writing stripe
+  private boolean suppress;
+
+  /**
+   * Stores the uncompressed bytes that have been serialized, but not
+   * compressed yet. When this fills, we compress the entire buffer.
+   */
+  private ByteBuffer current = null;
+
+  /**
+   * Stores the compressed bytes until we have a full buffer and then outputs
+   * them to the receiver. If no compression is being done, this (and overflow)
+   * will always be null and the current buffer will be sent directly to the
+   * receiver.
+   */
   private ByteBuffer compressed = null;
+
+  /**
+   * Since the compressed buffer may start with contents from previous
+   * compression blocks, we allocate an overflow buffer so that the
+   * output of the codec can be split between the two buffers. After the
+   * compressed buffer is sent to the receiver, the overflow buffer becomes
+   * the new compressed buffer.
+   */
   private ByteBuffer overflow = null;
-  private ByteBuffer current;
   private final int bufferSize;
   private final CompressionCodec codec;
   private long compressedBytes = 0;
@@ -45,14 +72,12 @@ class OutStream extends PositionedOutputStream {
     this.bufferSize = bufferSize;
     this.codec = codec;
     this.receiver = receiver;
+    this.suppress = false;
   }
 
   public void clear() throws IOException {
-    uncompressedBytes = 0;
-    compressedBytes = 0;
-    compressed = null;
-    overflow = null;
-    current = null;
+    flush();
+    suppress = false;
   }
 
   /**
@@ -85,9 +110,11 @@ class OutStream extends PositionedOutputStream {
     }
   }
 
+  /**
+   * Allocate a new output buffer if we are compressing.
+   */
   private ByteBuffer getNewOutputBuffer() throws IOException {
-    return ByteBuffer.allocate(bufferSize +
-      (codec == null ? 0 : HEADER_SIZE));
+    return ByteBuffer.allocate(bufferSize + HEADER_SIZE);
   }
 
   private void flip() throws IOException {
@@ -128,7 +155,8 @@ class OutStream extends PositionedOutputStream {
 
   private void spill() throws java.io.IOException {
     // if there isn't anything in the current buffer, don't spill
-    if (current == null || current.position() == (codec == null ? 0 : HEADER_SIZE)) {
+    if (current == null ||
+        current.position() == (codec == null ? 0 : HEADER_SIZE)) {
       return;
     }
     flip();
@@ -214,7 +242,10 @@ class OutStream extends PositionedOutputStream {
       receiver.output(compressed);
       compressed = null;
     }
-    clear();
+    uncompressedBytes = 0;
+    compressedBytes = 0;
+    overflow = null;
+    current = null;
   }
 
   @Override
@@ -223,8 +254,33 @@ class OutStream extends PositionedOutputStream {
   }
 
   @Override
-  public long getSize() {
-    return uncompressedBytes + compressedBytes;
+  public long getBufferSize() {
+    long result = 0;
+    if (current != null) {
+      result += current.capacity();
+    }
+    if (compressed != null) {
+      result += compressed.capacity();
+    }
+    if (overflow != null) {
+      result += overflow.capacity();
+    }
+    return result;
+  }
+
+  /**
+   * Set suppress flag
+   */
+  public void suppress() {
+    suppress = true;
+  }
+
+  /**
+   * Returns the state of suppress flag
+   * @return value of suppress flag
+   */
+  public boolean isSuppressed() {
+    return suppress;
   }
 }
 

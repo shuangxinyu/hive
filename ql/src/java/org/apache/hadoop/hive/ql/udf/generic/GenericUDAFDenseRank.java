@@ -34,14 +34,16 @@ import org.apache.hadoop.hive.ql.exec.WindowFunctionDescription;
 										"that the next person came in third."
 								),
 		supportsWindow = false,
-		pivotResult = true
+		pivotResult = true,
+		rankingFunction = true,
+		impliesOrder = true
 )
 public class GenericUDAFDenseRank extends GenericUDAFRank
 {
 	static final Log LOG = LogFactory.getLog(GenericUDAFDenseRank.class.getName());
 
 	@Override
-  protected GenericUDAFRankEvaluator createEvaluator()
+  protected GenericUDAFAbstractRankEvaluator createEvaluator()
 	{
 		return new GenericUDAFDenseRankEvaluator();
 	}

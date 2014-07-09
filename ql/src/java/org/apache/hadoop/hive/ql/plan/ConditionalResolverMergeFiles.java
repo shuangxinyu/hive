@@ -28,10 +28,10 @@ import java.util.Map;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.common.HiveStatsUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.Warehouse;
 import org.apache.hadoop.hive.ql.exec.Task;
-import org.apache.hadoop.hive.ql.exec.Utilities;
 
 /**
  * Conditional task resolution interface. This is invoked at run time to get the
@@ -144,7 +144,14 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
 
       if (inpFs.exists(dirPath)) {
         // For each dynamic partition, check if it needs to be merged.
-        MapredWork work = (MapredWork) mrTask.getWork();
+        MapWork work;
+        if (mrTask.getWork() instanceof MapredWork) {
+          work = ((MapredWork) mrTask.getWork()).getMapWork();
+        } else if (mrTask.getWork() instanceof TezWork){
+          work = (MapWork) ((TezWork) mrTask.getWork()).getAllWork().get(0);
+        } else {
+          work = (MapWork) mrTask.getWork();
+        }
 
         int lbLevel = (ctx.getLbCtx() == null) ? 0 : ctx.getLbCtx().calculateListBucketingLevel();
 
@@ -222,11 +229,11 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
   private void generateActualTasks(HiveConf conf, List<Task<? extends Serializable>> resTsks,
       long trgtSize, long avgConditionSize, Task<? extends Serializable> mvTask,
       Task<? extends Serializable> mrTask, Task<? extends Serializable> mrAndMvTask, Path dirPath,
-      FileSystem inpFs, ConditionalResolverMergeFilesCtx ctx, MapredWork work, int dpLbLevel)
+      FileSystem inpFs, ConditionalResolverMergeFilesCtx ctx, MapWork work, int dpLbLevel)
       throws IOException {
     DynamicPartitionCtx dpCtx = ctx.getDPCtx();
     // get list of dynamic partitions
-    FileStatus[] status = Utilities.getFileStatusRecurse(dirPath, dpLbLevel, inpFs);
+    FileStatus[] status = HiveStatsUtils.getFileStatusRecurse(dirPath, dpLbLevel, inpFs);
 
     // cleanup pathToPartitionInfo
     Map<String, PartitionDesc> ptpi = work.getPathToPartitionInfo();
@@ -247,7 +254,7 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
     long totalSz = 0;
     boolean doMerge = false;
     // list of paths that don't need to merge but need to move to the dest location
-    List<String> toMove = new ArrayList<String>();
+    List<Path> toMove = new ArrayList<Path>();
     for (int i = 0; i < status.length; ++i) {
       long len = getMergeSize(inpFs, status[i].getPath(), avgConditionSize);
       if (len >= 0) {
@@ -258,7 +265,7 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
         work.resolveDynamicPartitionStoredAsSubDirsMerge(conf, status[i].getPath(), tblDesc,
             aliases, pDesc);
       } else {
-        toMove.add(status[i].getPath().toString());
+        toMove.add(status[i].getPath());
       }
     }
     if (doMerge) {
@@ -278,19 +285,15 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
         MoveWork mvWork = (MoveWork) mvTask.getWork();
         LoadFileDesc lfd = mvWork.getLoadFileWork();
 
-        String targetDir = lfd.getTargetDir();
-        List<String> targetDirs = new ArrayList<String>(toMove.size());
+        Path targetDir = lfd.getTargetDir();
+        List<Path> targetDirs = new ArrayList<Path>(toMove.size());
 
         for (int i = 0; i < toMove.size(); i++) {
-          String toMoveStr = toMove.get(i);
-          if (toMoveStr.endsWith(Path.SEPARATOR)) {
-            toMoveStr = toMoveStr.substring(0, toMoveStr.length() - 1);
-          }
-          String[] moveStrSplits = toMoveStr.split(Path.SEPARATOR);
+          String[] moveStrSplits = toMove.get(i).toUri().toString().split(Path.SEPARATOR);
           int dpIndex = moveStrSplits.length - dpLbLevel;
-          String target = targetDir;
+          Path target = targetDir;
           while (dpIndex < moveStrSplits.length) {
-            target = target + Path.SEPARATOR + moveStrSplits[dpIndex];
+            target = new Path(target, moveStrSplits[dpIndex]);
             dpIndex++;
           }
 
@@ -319,18 +322,11 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
     return pDesc;
   }
 
-  private void setupMapRedWork(HiveConf conf, MapredWork work, long targetSize, long totalSize) {
-    if (work.getNumReduceTasks() > 0) {
-      int maxReducers = conf.getIntVar(HiveConf.ConfVars.MAXREDUCERS);
-      int reducers = (int) ((totalSize + targetSize - 1) / targetSize);
-      reducers = Math.max(1, reducers);
-      reducers = Math.min(maxReducers, reducers);
-      work.setNumReduceTasks(reducers);
-    }
-    work.setMaxSplitSize(targetSize);
-    work.setMinSplitSize(targetSize);
-    work.setMinSplitSizePerNode(targetSize);
-    work.setMinSplitSizePerRack(targetSize);
+  private void setupMapRedWork(HiveConf conf, MapWork mWork, long targetSize, long totalSize) {
+    mWork.setMaxSplitSize(targetSize);
+    mWork.setMinSplitSize(targetSize);
+    mWork.setMinSplitSizePerNode(targetSize);
+    mWork.setMinSplitSizePerRack(targetSize);
   }
 
   private static class AverageSize {
@@ -352,7 +348,6 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
   }
 
   private AverageSize getAverageSize(FileSystem inpFs, Path dirPath) {
-    AverageSize dummy = new AverageSize(0, 0);
     AverageSize error = new AverageSize(-1, -1);
     try {
       FileStatus[] fStats = inpFs.listStatus(dirPath);

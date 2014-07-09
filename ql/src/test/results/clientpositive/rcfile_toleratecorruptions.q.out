@@ -1,7 +1,9 @@
 PREHOOK: query: CREATE TABLE test_src(key int, value string) stored as RCFILE
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: CREATE TABLE test_src(key int, value string) stored as RCFILE
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@test_src
 PREHOOK: query: INSERT OVERWRITE table test_src SELECT * FROM src
 PREHOOK: type: QUERY
@@ -21,8 +23,6 @@ POSTHOOK: query: SELECT key, value FROM test_src order by key
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@test_src
 #### A masked pattern was here ####
-POSTHOOK: Lineage: test_src.key EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: test_src.value SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
 0	val_0
 0	val_0
 0	val_0

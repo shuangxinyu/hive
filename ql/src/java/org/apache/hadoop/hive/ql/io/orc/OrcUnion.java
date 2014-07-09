@@ -74,13 +74,15 @@ final class OrcUnion implements UnionObject {
 
   @Override
   public String toString() {
-    return "union(" + Integer.toString(tag & 0xff) + ", " + object.toString() +
-        ")";
+    return "union(" + Integer.toString(tag & 0xff) + ", " + object + ")";
   }
 
   static class OrcUnionObjectInspector implements UnionObjectInspector {
-    private final List<ObjectInspector> children;
+    private List<ObjectInspector> children;
 
+    protected OrcUnionObjectInspector() {
+      super();
+    }
     OrcUnionObjectInspector(int columnId,
                             List<OrcProto.Type> types) {
       OrcProto.Type type = types.get(columnId);
@@ -133,6 +135,26 @@ final class OrcUnion implements UnionObject {
     @Override
     public Category getCategory() {
       return Category.UNION;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (o == null || o.getClass() != getClass()) {
+        return false;
+      } else if (o == this) {
+        return true;
+      } else {
+        List<ObjectInspector> other = ((OrcUnionObjectInspector) o).children;
+        if (other.size() != children.size()) {
+          return false;
+        }
+        for(int i = 0; i < children.size(); ++i) {
+          if (!other.get(i).equals(children.get(i))) {
+            return false;
+          }
+        }
+        return true;
+      }
     }
   }
 }

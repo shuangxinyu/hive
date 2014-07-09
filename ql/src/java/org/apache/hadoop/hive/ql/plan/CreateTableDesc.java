@@ -25,7 +25,11 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.common.JavaUtils;
+import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Order;
 import org.apache.hadoop.hive.ql.ErrorMsg;
@@ -36,7 +40,8 @@ import org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer;
 import org.apache.hadoop.hive.ql.parse.ParseUtils;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.serde2.SerDeUtils;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 
 /**
  * CreateTableDesc.
@@ -45,19 +50,21 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
 @Explain(displayName = "Create Table")
 public class CreateTableDesc extends DDLDesc implements Serializable {
   private static final long serialVersionUID = 1L;
+  private static Log LOG = LogFactory.getLog(CreateTableDesc.class);
   String databaseName;
   String tableName;
   boolean isExternal;
-  ArrayList<FieldSchema> cols;
-  ArrayList<FieldSchema> partCols;
-  ArrayList<String> bucketCols;
-  ArrayList<Order> sortCols;
+  List<FieldSchema> cols;
+  List<FieldSchema> partCols;
+  List<String> bucketCols;
+  List<Order> sortCols;
   int numBuckets;
   String fieldDelim;
   String fieldEscape;
   String collItemDelim;
   String mapKeyDelim;
   String lineDelim;
+  String nullFormat;
   String comment;
   String inputFormat;
   String outputFormat;
@@ -125,8 +132,12 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
     this.serdeProps = serdeProps;
     this.tblProps = tblProps;
     this.ifNotExists = ifNotExists;
-    this.skewedColNames = new ArrayList<String>(skewedColNames);
-    this.skewedColValues = new ArrayList<List<String>>(skewedColValues);
+    this.skewedColNames = copyList(skewedColNames);
+    this.skewedColValues = copyList(skewedColValues);
+  }
+
+  private static <T> List<T> copyList(List<T> copy) {
+    return copy == null ? null : new ArrayList<T>(copy);
   }
 
   @Explain(displayName = "columns")
@@ -139,7 +150,7 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
     return Utilities.getFieldSchemaString(getPartCols());
   }
 
-  @Explain(displayName = "if not exists")
+  @Explain(displayName = "if not exists", displayOnlyOnTrue = true)
   public boolean getIfNotExists() {
     return ifNotExists;
   }
@@ -161,7 +172,7 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
     this.tableName = tableName;
   }
 
-  public ArrayList<FieldSchema> getCols() {
+  public List<FieldSchema> getCols() {
     return cols;
   }
 
@@ -169,7 +180,7 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
     this.cols = cols;
   }
 
-  public ArrayList<FieldSchema> getPartCols() {
+  public List<FieldSchema> getPartCols() {
     return partCols;
   }
 
@@ -178,7 +189,7 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
   }
 
   @Explain(displayName = "bucket columns")
-  public ArrayList<String> getBucketCols() {
+  public List<String> getBucketCols() {
     return bucketCols;
   }
 
@@ -187,6 +198,14 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
   }
 
   @Explain(displayName = "# buckets")
+  public Integer getNumBucketsExplain() {
+    if (numBuckets == -1) {
+      return null;
+    } else {
+      return numBuckets;
+    }
+  }
+
   public int getNumBuckets() {
     return numBuckets;
   }
@@ -285,7 +304,7 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
     this.location = location;
   }
 
-  @Explain(displayName = "isExternal")
+  @Explain(displayName = "isExternal", displayOnlyOnTrue = true)
   public boolean isExternal() {
     return isExternal;
   }
@@ -298,7 +317,7 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
    * @return the sortCols
    */
   @Explain(displayName = "sort columns")
-  public ArrayList<Order> getSortCols() {
+  public List<Order> getSortCols() {
     return sortCols;
   }
 
@@ -386,13 +405,13 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
     this.skewedColValues = skewedColValues;
   }
 
-  public void validate()
+  public void validate(HiveConf conf)
       throws SemanticException {
 
     if ((this.getCols() == null) || (this.getCols().size() == 0)) {
       // for now make sure that serde exists
       if (StringUtils.isEmpty(this.getSerName())
-          || !SerDeUtils.shouldGetColsFromSerDe(this.getSerName())) {
+          || conf.getStringCollection(ConfVars.SERDESUSINGMETASTOREFORSCHEMA.varname).contains(this.getSerName())) {
         throw new SemanticException(ErrorMsg.INVALID_TBL_DDL_SERDE.getMsg());
       }
       return;
@@ -403,7 +422,7 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
         Class<?> origin = Class.forName(this.getOutputFormat(), true,
           JavaUtils.getClassLoader());
         Class<? extends HiveOutputFormat> replaced = HiveFileFormatUtils
-          .getOutputFormatSubstitute(origin);
+          .getOutputFormatSubstitute(origin,false);
         if (replaced == null) {
           throw new SemanticException(ErrorMsg.INVALID_OUTPUT_FORMAT_TYPE
             .getMsg());
@@ -461,12 +480,15 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
       while (partColsIter.hasNext()) {
         FieldSchema fs = partColsIter.next();
         String partCol = fs.getName();
-        PrimitiveObjectInspectorUtils.PrimitiveTypeEntry pte = PrimitiveObjectInspectorUtils
-            .getTypeEntryFromTypeName(
-            fs.getType());
-        if(null == pte){
+        TypeInfo pti = null;
+        try {
+          pti = TypeInfoFactory.getPrimitiveTypeInfo(fs.getType());
+        } catch (Exception err) {
+          LOG.error(err);
+        }
+        if(null == pti){
           throw new SemanticException(ErrorMsg.PARTITION_COLUMN_NON_PRIMITIVE.getMsg() + " Found "
-        + partCol + " of type: " + fs.getType());
+              + partCol + " of type: " + fs.getType());
         }
         Iterator<String> colNamesIter = colNames.iterator();
         while (colNamesIter.hasNext()) {
@@ -497,4 +519,20 @@ public class CreateTableDesc extends DDLDesc implements Serializable {
   public void setStoredAsSubDirectories(boolean isStoredAsSubDirectories) {
     this.isStoredAsSubDirectories = isStoredAsSubDirectories;
   }
+
+  /**
+   * @return the nullFormat
+   */
+  public String getNullFormat() {
+    return nullFormat;
+  }
+
+  /**
+   * Set null format string
+   * @param nullFormat
+   */
+  public void setNullFormat(String nullFormat) {
+    this.nullFormat = nullFormat;
+  }
+
 }

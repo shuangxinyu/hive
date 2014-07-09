@@ -25,6 +25,10 @@ import java.util.Date;
 
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDF;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedExpressions;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFWeekOfYearLong;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFWeekOfYearString;
+import org.apache.hadoop.hive.serde2.io.DateWritable;
 import org.apache.hadoop.hive.serde2.io.TimestampWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
@@ -40,11 +44,12 @@ import org.apache.hadoop.io.Text;
     + "  > SELECT _FUNC_('2008-02-20') FROM src LIMIT 1;\n"
     + "  8\n"
     + "  > SELECT _FUNC_('1980-12-31 12:59:59') FROM src LIMIT 1;\n" + "  1")
+@VectorizedExpressions({VectorUDFWeekOfYearLong.class, VectorUDFWeekOfYearString.class})
 public class UDFWeekOfYear extends UDF {
   private final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
   private final Calendar calendar = Calendar.getInstance();
 
-  private IntWritable result = new IntWritable();
+  private final IntWritable result = new IntWritable();
 
   public UDFWeekOfYear() {
     calendar.setFirstDayOfWeek(Calendar.MONDAY);
@@ -72,6 +77,16 @@ public class UDFWeekOfYear extends UDF {
     } catch (ParseException e) {
       return null;
     }
+  }
+
+  public IntWritable evaluate(DateWritable d) {
+    if (d == null) {
+      return null;
+    }
+
+    calendar.setTime(d.get());
+    result.set(calendar.get(Calendar.WEEK_OF_YEAR));
+    return result;
   }
 
   public IntWritable evaluate(TimestampWritable t) {

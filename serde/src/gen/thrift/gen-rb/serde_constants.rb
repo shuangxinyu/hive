@@ -35,6 +35,10 @@ QUOTE_CHAR = %q"quote.delim"
 
 ESCAPE_CHAR = %q"escape.delim"
 
+HEADER_COUNT = %q"skip.header.line.count"
+
+FOOTER_COUNT = %q"skip.footer.line.count"
+
 VOID_TYPE_NAME = %q"void"
 
 BOOLEAN_TYPE_NAME = %q"boolean"
@@ -52,6 +56,10 @@ FLOAT_TYPE_NAME = %q"float"
 DOUBLE_TYPE_NAME = %q"double"
 
 STRING_TYPE_NAME = %q"string"
+
+CHAR_TYPE_NAME = %q"char"
+
+VARCHAR_TYPE_NAME = %q"varchar"
 
 DATE_TYPE_NAME = %q"date"
 
@@ -85,6 +93,8 @@ PrimitiveTypes = Set.new([
   %q"float",
   %q"double",
   %q"string",
+  %q"varchar",
+  %q"char",
   %q"date",
   %q"datetime",
   %q"timestamp",
@@ -95,5 +105,12 @@ PrimitiveTypes = Set.new([
 CollectionTypes = Set.new([
   %q"array",
   %q"map",
+])
+
+IntegralTypes = Set.new([
+  %q"tinyint",
+  %q"smallint",
+  %q"int",
+  %q"bigint",
 ])
 

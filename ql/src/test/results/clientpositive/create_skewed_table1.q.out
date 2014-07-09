@@ -1,26 +1,34 @@
 PREHOOK: query: CREATE TABLE list_bucket_single (key STRING, value STRING) SKEWED BY (key) ON ('1','5','6')
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: CREATE TABLE list_bucket_single (key STRING, value STRING) SKEWED BY (key) ON ('1','5','6')
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@list_bucket_single
 PREHOOK: query: CREATE TABLE list_bucket_single_2 (key STRING, value STRING) SKEWED BY (key) ON ((1),(5),(6))
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: CREATE TABLE list_bucket_single_2 (key STRING, value STRING) SKEWED BY (key) ON ((1),(5),(6))
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@list_bucket_single_2
 PREHOOK: query: CREATE TABLE list_bucket_multiple (col1 STRING, col2 int, col3 STRING) SKEWED BY (col1, col2) ON (('s1',1), ('s3',3), ('s13',13), ('s78',78))
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: CREATE TABLE list_bucket_multiple (col1 STRING, col2 int, col3 STRING) SKEWED BY (col1, col2) ON (('s1',1), ('s3',3), ('s13',13), ('s78',78))
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@list_bucket_multiple
 PREHOOK: query: describe formatted list_bucket_single_2
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@list_bucket_single_2
 POSTHOOK: query: describe formatted list_bucket_single_2
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@list_bucket_single_2
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
+key                 	string              	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -46,12 +54,14 @@ Storage Desc Params:
 	serialization.format	1                   
 PREHOOK: query: describe formatted list_bucket_single
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@list_bucket_single
 POSTHOOK: query: describe formatted list_bucket_single
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@list_bucket_single
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
+key                 	string              	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -77,13 +87,15 @@ Storage Desc Params:
 	serialization.format	1                   
 PREHOOK: query: describe formatted list_bucket_multiple
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@list_bucket_multiple
 POSTHOOK: query: describe formatted list_bucket_multiple
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@list_bucket_multiple
 # col_name            	data_type           	comment             
 	 	 
-col1                	string              	None                
-col2                	int                 	None                
-col3                	string              	None                
+col1                	string              	                    
+col2                	int                 	                    
+col3                	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 

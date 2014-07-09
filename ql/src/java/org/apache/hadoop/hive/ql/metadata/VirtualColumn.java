@@ -20,10 +20,15 @@ package org.apache.hadoop.hive.ql.metadata;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
+import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 
@@ -47,6 +52,8 @@ public class VirtualColumn implements Serializable {
   public static VirtualColumn GROUPINGID =
       new VirtualColumn("GROUPING__ID", (PrimitiveTypeInfo) TypeInfoFactory.intTypeInfo);
 
+  public static VirtualColumn[] VIRTUAL_COLUMNS =
+      new VirtualColumn[] {FILENAME, BLOCKOFFSET, ROWOFFSET, RAWDATASIZE, GROUPINGID};
 
   private String name;
   private PrimitiveTypeInfo typeInfo;
@@ -125,4 +132,21 @@ public class VirtualColumn implements Serializable {
         && this.typeInfo.getTypeName().equals(c.getTypeInfo().getTypeName());
   }
 
+  public static Collection<String> removeVirtualColumns(final Collection<String> columns) {
+    for(VirtualColumn vcol : VIRTUAL_COLUMNS) {
+      columns.remove(vcol.getName());
+    }
+    return columns;
+  }
+
+  public static StructObjectInspector getVCSObjectInspector(List<VirtualColumn> vcs) {
+    List<String> names = new ArrayList<String>(vcs.size());
+    List<ObjectInspector> inspectors = new ArrayList<ObjectInspector>(vcs.size());
+    for (VirtualColumn vc : vcs) {
+      names.add(vc.getName());
+      inspectors.add(PrimitiveObjectInspectorFactory.getPrimitiveWritableObjectInspector(
+          vc.getTypeInfo()));
+    }
+    return ObjectInspectorFactory.getStandardStructObjectInspector(names, inspectors);
+  }
 }

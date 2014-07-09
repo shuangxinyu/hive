@@ -17,8 +17,10 @@
  */
 package org.apache.hadoop.hive.serde2.binarysortable;
 
-import java.math.BigDecimal;
+import java.sql.Date;
 import java.util.List;
+
+import org.apache.hadoop.hive.common.type.HiveDecimal;
 
 public class MyTestClass {
     Byte myByte;
@@ -28,7 +30,8 @@ public class MyTestClass {
     Float myFloat;
     Double myDouble;
     String myString;
-    BigDecimal myDecimal;
+    HiveDecimal myDecimal;
+    Date myDate;
     MyTestInnerStruct myStruct;
     List<Integer> myList;
     byte[] myBA;
@@ -37,7 +40,7 @@ public class MyTestClass {
     }
 
     public MyTestClass(Byte b, Short s, Integer i, Long l, Float f, Double d,
-		       String st, BigDecimal bd, MyTestInnerStruct is, List<Integer> li, byte[] ba) {
+		       String st, HiveDecimal bd, Date date, MyTestInnerStruct is, List<Integer> li, byte[] ba) {
 	myByte = b;
 	myShort = s;
 	myInt = i;
@@ -46,6 +49,7 @@ public class MyTestClass {
 	myDouble = d;
 	myString = st;
 	myDecimal = bd;
+	myDate = date;
 	myStruct = is;
 	myList = li;
 	myBA = ba;

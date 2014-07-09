@@ -23,6 +23,8 @@ LINE_DELIM = "line.delim"
 MAPKEY_DELIM = "mapkey.delim"
 QUOTE_CHAR = "quote.delim"
 ESCAPE_CHAR = "escape.delim"
+HEADER_COUNT = "skip.header.line.count"
+FOOTER_COUNT = "skip.footer.line.count"
 VOID_TYPE_NAME = "void"
 BOOLEAN_TYPE_NAME = "boolean"
 TINYINT_TYPE_NAME = "tinyint"
@@ -32,6 +34,8 @@ BIGINT_TYPE_NAME = "bigint"
 FLOAT_TYPE_NAME = "float"
 DOUBLE_TYPE_NAME = "double"
 STRING_TYPE_NAME = "string"
+CHAR_TYPE_NAME = "char"
+VARCHAR_TYPE_NAME = "varchar"
 DATE_TYPE_NAME = "date"
 DATETIME_TYPE_NAME = "datetime"
 TIMESTAMP_TYPE_NAME = "timestamp"
@@ -53,6 +57,8 @@ PrimitiveTypes = set([
   "float",
   "double",
   "string",
+  "varchar",
+  "char",
   "date",
   "datetime",
   "timestamp",
@@ -62,4 +68,10 @@ PrimitiveTypes = set([
 CollectionTypes = set([
   "array",
   "map",
+])
+IntegralTypes = set([
+  "tinyint",
+  "smallint",
+  "int",
+  "bigint",
 ])

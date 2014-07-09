@@ -18,7 +18,10 @@
 
 package org.apache.hadoop.hive.ql.plan;
 
+import java.util.List;
 import java.util.Map;
+
+import org.apache.hadoop.fs.Path;
 
 /**
  * Truncates managed table or partition
@@ -30,6 +33,10 @@ public class TruncateTableDesc extends DDLDesc {
 
   private String tableName;
   private Map<String, String> partSpec;
+  private List<Integer> columnIndexes;
+  private Path inputDir;
+  private Path outputDir;
+  private ListBucketingCtx lbCtx;
 
   public TruncateTableDesc() {
   }
@@ -55,5 +62,38 @@ public class TruncateTableDesc extends DDLDesc {
 
   public void setPartSpec(Map<String, String> partSpec) {
     this.partSpec = partSpec;
+  }
+
+  @Explain(displayName = "Column Indexes")
+  public List<Integer> getColumnIndexes() {
+    return columnIndexes;
+  }
+
+  public void setColumnIndexes(List<Integer> columnIndexes) {
+    this.columnIndexes = columnIndexes;
+  }
+
+  public Path getInputDir() {
+    return inputDir;
+  }
+
+  public void setInputDir(Path inputDir) {
+    this.inputDir = inputDir;
+  }
+
+  public Path getOutputDir() {
+    return outputDir;
+  }
+
+  public void setOutputDir(Path outputDir) {
+    this.outputDir = outputDir;
+  }
+
+  public ListBucketingCtx getLbCtx() {
+    return lbCtx;
+  }
+
+  public void setLbCtx(ListBucketingCtx lbCtx) {
+    this.lbCtx = lbCtx;
   }
 }

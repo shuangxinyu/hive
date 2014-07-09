@@ -26,10 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
-import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluator;
-import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluatorFactory;
 import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
-import org.apache.hadoop.hive.ql.exec.UDF;
 import org.apache.hadoop.hive.ql.lib.DefaultGraphWalker;
 import org.apache.hadoop.hive.ql.lib.DefaultRuleDispatcher;
 import org.apache.hadoop.hive.ql.lib.Dispatcher;
@@ -42,15 +39,13 @@ import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeDescUtils;
+import org.apache.hadoop.hive.ql.plan.ExprNodeFieldDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
-import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
-import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFBridge;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.util.ReflectionUtils;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDFBaseCompare;
 
 /**
  * IndexPredicateAnalyzer decomposes predicates, separating the parts
@@ -59,15 +54,21 @@ import org.apache.hadoop.util.ReflectionUtils;
  * comparing a column reference with a constant value.  It is assumed
  * that all column aliases encountered refer to the same table.
  */
-public class IndexPredicateAnalyzer
-{
-  private static final Log LOG = LogFactory.getLog(IndexPredicateAnalyzer.class.getName());
-  private Set<String> udfNames;
+public class IndexPredicateAnalyzer {
 
-  private Set<String> allowedColumnNames;
+  private final Set<String> udfNames;
+  private final Set<String> allowedColumnNames;
+  private FieldValidator fieldValidator;
+
+  private boolean acceptsFields;
 
   public IndexPredicateAnalyzer() {
     udfNames = new HashSet<String>();
+    allowedColumnNames = new HashSet<String>();
+  }
+
+  public void setFieldValidator(FieldValidator fieldValidator) {
+    this.fieldValidator = fieldValidator;
   }
 
   /**
@@ -88,7 +89,7 @@ public class IndexPredicateAnalyzer
    * column names are allowed.)
    */
   public void clearAllowedColumnNames() {
-    allowedColumnNames = new HashSet<String>();
+    allowedColumnNames.clear();
   }
 
   /**
@@ -97,9 +98,6 @@ public class IndexPredicateAnalyzer
    * @param columnName name of column to be allowed
    */
   public void allowColumnName(String columnName) {
-    if (allowedColumnNames == null) {
-      clearAllowedColumnNames();
-    }
     allowedColumnNames.add(columnName);
   }
 
@@ -135,7 +133,7 @@ public class IndexPredicateAnalyzer
           }
         }
 
-        return analyzeExpr((ExprNodeDesc) nd, searchConditions, nodeOutputs);
+        return analyzeExpr((ExprNodeGenericFuncDesc) nd, searchConditions, nodeOutputs);
       }
     };
 
@@ -155,13 +153,10 @@ public class IndexPredicateAnalyzer
   }
 
   private ExprNodeDesc analyzeExpr(
-    ExprNodeDesc expr,
+    ExprNodeGenericFuncDesc expr,
     List<IndexSearchCondition> searchConditions,
     Object... nodeOutputs) {
 
-    if (!(expr instanceof ExprNodeGenericFuncDesc)) {
-      return expr;
-    }
     if (FunctionRegistry.isOpAnd(expr)) {
       assert(nodeOutputs.length == 2);
       ExprNodeDesc residual1 = (ExprNodeDesc) nodeOutputs[0];
@@ -181,100 +176,61 @@ public class IndexPredicateAnalyzer
         residuals);
     }
 
-    String udfName;
-    ExprNodeGenericFuncDesc funcDesc = (ExprNodeGenericFuncDesc) expr;
-    if (funcDesc.getGenericUDF() instanceof GenericUDFBridge) {
-      GenericUDFBridge func = (GenericUDFBridge) funcDesc.getGenericUDF();
-      udfName = func.getUdfName();
-    } else {
-      udfName = funcDesc.getGenericUDF().getClass().getName();
+    GenericUDF genericUDF = expr.getGenericUDF();
+    if (!(genericUDF instanceof GenericUDFBaseCompare)) {
+      return expr;
     }
-    if (!udfNames.contains(udfName)) {
+    ExprNodeDesc expr1 = (ExprNodeDesc) nodeOutputs[0];
+    ExprNodeDesc expr2 = (ExprNodeDesc) nodeOutputs[1];
+    ExprNodeDesc[] extracted = ExprNodeDescUtils.extractComparePair(expr1, expr2);
+    if (extracted == null || (extracted.length > 2 && !acceptsFields)) {
       return expr;
     }
 
-    ExprNodeDesc child1 = extractConstant((ExprNodeDesc) nodeOutputs[0]);
-    ExprNodeDesc child2 = extractConstant((ExprNodeDesc) nodeOutputs[1]);
-    ExprNodeColumnDesc columnDesc = null;
-    ExprNodeConstantDesc constantDesc = null;
-    if ((child1 instanceof ExprNodeColumnDesc)
-      && (child2 instanceof ExprNodeConstantDesc)) {
-      // COL <op> CONSTANT
-      columnDesc = (ExprNodeColumnDesc) child1;
-      constantDesc = (ExprNodeConstantDesc) child2;
-    } else if ((child2 instanceof ExprNodeColumnDesc)
-      && (child1 instanceof ExprNodeConstantDesc)) {
-      // CONSTANT <op> COL
-      columnDesc = (ExprNodeColumnDesc) child2;
-      constantDesc = (ExprNodeConstantDesc) child1;
+    ExprNodeColumnDesc columnDesc;
+    ExprNodeConstantDesc constantDesc;
+    if (extracted[0] instanceof ExprNodeConstantDesc) {
+      genericUDF = genericUDF.flip();
+      columnDesc = (ExprNodeColumnDesc) extracted[1];
+      constantDesc = (ExprNodeConstantDesc) extracted[0];
+    } else {
+      columnDesc = (ExprNodeColumnDesc) extracted[0];
+      constantDesc = (ExprNodeConstantDesc) extracted[1];
     }
-    if (columnDesc == null) {
+
+    String udfName = genericUDF.getUdfName();
+    if (!udfNames.contains(genericUDF.getUdfName())) {
       return expr;
     }
-    if (allowedColumnNames != null) {
-      if (!allowedColumnNames.contains(columnDesc.getColumn())) {
+
+    if (!allowedColumnNames.contains(columnDesc.getColumn())) {
+      return expr;
+    }
+
+    String[] fields = null;
+    if (extracted.length > 2) {
+      ExprNodeFieldDesc fieldDesc = (ExprNodeFieldDesc) extracted[2];
+      if (!isValidField(fieldDesc)) {
         return expr;
       }
+      fields = ExprNodeDescUtils.extractFields(fieldDesc);
     }
+
     searchConditions.add(
       new IndexSearchCondition(
         columnDesc,
         udfName,
         constantDesc,
-        expr));
+        expr,
+        fields));
 
     // we converted the expression to a search condition, so
     // remove it from the residual predicate
-    return null;
+    return fields == null ? null : expr;
   }
 
-  private ExprNodeDesc extractConstant(ExprNodeDesc expr) {
-    if (!(expr instanceof ExprNodeGenericFuncDesc)) {
-      return expr;
-    }
-    ExprNodeConstantDesc folded = foldConstant(((ExprNodeGenericFuncDesc) expr));
-    return folded == null ? expr : folded;
-  }
-
-  private ExprNodeConstantDesc foldConstant(ExprNodeGenericFuncDesc func) {
-    GenericUDF udf = func.getGenericUDF();
-    if (!FunctionRegistry.isDeterministic(udf) || FunctionRegistry.isStateful(udf)) {
-      return null;
-    }
-    try {
-      // If the UDF depends on any external resources, we can't fold because the
-      // resources may not be available at compile time.
-      if (udf instanceof GenericUDFBridge) {
-        UDF internal = ReflectionUtils.newInstance(((GenericUDFBridge) udf).getUdfClass(), null);
-        if (internal.getRequiredFiles() != null || internal.getRequiredJars() != null) {
-          return null;
-        }
-      } else {
-        if (udf.getRequiredFiles() != null || udf.getRequiredJars() != null) {
-          return null;
-        }
-      }
-
-      for (ExprNodeDesc child : func.getChildExprs()) {
-        if (child instanceof ExprNodeConstantDesc) {
-          continue;
-        } else if (child instanceof ExprNodeGenericFuncDesc) {
-          if (foldConstant((ExprNodeGenericFuncDesc) child) != null) {
-            continue;
-          }
-        }
-        return null;
-      }
-      ExprNodeEvaluator evaluator = ExprNodeEvaluatorFactory.get(func);
-      ObjectInspector output = evaluator.initialize(null);
-
-      Object constant = evaluator.evaluate(null);
-      Object java = ObjectInspectorUtils.copyToStandardJavaObject(constant, output);
-
-      return new ExprNodeConstantDesc(java);
-    } catch (Exception e) {
-      return null;
-    }
+  private boolean isValidField(ExprNodeFieldDesc field) {
+    return fieldValidator == null || fieldValidator.validate(field);
   }
 
   /**
@@ -283,12 +239,12 @@ public class IndexPredicateAnalyzer
    *
    * @param searchConditions (typically produced by analyzePredicate)
    *
-   * @return ExprNodeDesc form of search conditions
+   * @return ExprNodeGenericFuncDesc form of search conditions
    */
-  public ExprNodeDesc translateSearchConditions(
+  public ExprNodeGenericFuncDesc translateSearchConditions(
     List<IndexSearchCondition> searchConditions) {
 
-    ExprNodeDesc expr = null;
+    ExprNodeGenericFuncDesc expr = null;
     for (IndexSearchCondition searchCondition : searchConditions) {
       if (expr == null) {
         expr = searchCondition.getComparisonExpr();
@@ -303,5 +259,28 @@ public class IndexPredicateAnalyzer
         children);
     }
     return expr;
+  }
+
+  public void setAcceptsFields(boolean acceptsFields) {
+    this.acceptsFields = acceptsFields;
+  }
+
+  public static interface FieldValidator {
+    boolean validate(ExprNodeFieldDesc exprNodeDesc);
+  }
+
+  public static IndexPredicateAnalyzer createAnalyzer(boolean equalOnly) {
+
+    IndexPredicateAnalyzer analyzer = new IndexPredicateAnalyzer();
+    analyzer.addComparisonOp("org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPEqual");
+    if (equalOnly) {
+      return analyzer;
+    }
+    analyzer.addComparisonOp("org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPEqualOrGreaterThan");
+    analyzer.addComparisonOp("org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPEqualOrLessThan");
+    analyzer.addComparisonOp("org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPLessThan");
+    analyzer.addComparisonOp("org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPGreaterThan");
+
+    return analyzer;
   }
 }

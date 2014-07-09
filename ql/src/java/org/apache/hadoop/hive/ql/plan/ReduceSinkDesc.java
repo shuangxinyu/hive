@@ -21,6 +21,9 @@ package org.apache.hadoop.hive.ql.plan;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 
 /**
  * ReduceSinkDesc.
@@ -60,6 +63,12 @@ public class ReduceSinkDesc extends AbstractOperatorDesc {
   private int numDistributionKeys;
 
   /**
+   * Used in tez. Holds the name of the output
+   * that this reduce sink is writing to.
+   */
+  private String outputName;
+
+  /**
    * The partition columns (CLUSTER BY or DISTRIBUTE BY in Hive language).
    * Partition columns decide the reducer that the current row goes to.
    * Partition columns are not passed to reducer.
@@ -68,16 +77,31 @@ public class ReduceSinkDesc extends AbstractOperatorDesc {
 
   private int numReducers;
 
+  /**
+   * Bucket information
+   */
+  private int numBuckets;
+  private List<ExprNodeDesc> bucketCols;
+
+  private int topN = -1;
+  private float topNMemoryUsage = -1;
+  private boolean mapGroupBy;  // for group-by, values with same key on top-K should be forwarded
+  //flag used to control how TopN handled for PTF/Windowing partitions.
+  private boolean isPTFReduceSink = false; 
+  private boolean skipTag; // Skip writing tags when feeding into mapjoin hashtable
+  private Boolean autoParallel = null; // Is reducer auto-parallelism enabled, disabled or unset
+
+  private static transient Log LOG = LogFactory.getLog(ReduceSinkDesc.class);
   public ReduceSinkDesc() {
   }
 
-  public ReduceSinkDesc(java.util.ArrayList<ExprNodeDesc> keyCols,
+  public ReduceSinkDesc(ArrayList<ExprNodeDesc> keyCols,
       int numDistributionKeys,
-      java.util.ArrayList<ExprNodeDesc> valueCols,
-      java.util.ArrayList<java.lang.String> outputKeyColumnNames,
+      ArrayList<ExprNodeDesc> valueCols,
+      ArrayList<String> outputKeyColumnNames,
       List<List<Integer>> distinctColumnIndices,
-      java.util.ArrayList<java.lang.String> outputValueColumnNames, int tag,
-      java.util.ArrayList<ExprNodeDesc> partitionCols, int numReducers,
+      ArrayList<String> outputValueColumnNames, int tag,
+      ArrayList<ExprNodeDesc> partitionCols, int numReducers,
       final TableDesc keySerializeInfo, final TableDesc valueSerializeInfo) {
     this.keyCols = keyCols;
     this.numDistributionKeys = numDistributionKeys;
@@ -90,6 +114,8 @@ public class ReduceSinkDesc extends AbstractOperatorDesc {
     this.keySerializeInfo = keySerializeInfo;
     this.valueSerializeInfo = valueSerializeInfo;
     this.distinctColumnIndices = distinctColumnIndices;
+    this.setNumBuckets(-1);
+    this.setBucketCols(null);
   }
 
   @Override
@@ -112,6 +138,11 @@ public class ReduceSinkDesc extends AbstractOperatorDesc {
     desc.setPartitionCols((ArrayList<ExprNodeDesc>) getPartitionCols().clone());
     desc.setKeySerializeInfo((TableDesc) getKeySerializeInfo().clone());
     desc.setValueSerializeInfo((TableDesc) getValueSerializeInfo().clone());
+    desc.setNumBuckets(numBuckets);
+    desc.setBucketCols(bucketCols);
+    desc.setStatistics(this.getStatistics());
+    desc.setSkipTag(skipTag);
+    desc.autoParallel = autoParallel;
     return desc;
   }
 
@@ -134,6 +165,10 @@ public class ReduceSinkDesc extends AbstractOperatorDesc {
   }
 
   @Explain(displayName = "key expressions")
+  public String getKeyColString() {
+    return PlanUtils.getExprListString(keyCols);
+  }
+
   public java.util.ArrayList<ExprNodeDesc> getKeyCols() {
     return keyCols;
   }
@@ -151,6 +186,10 @@ public class ReduceSinkDesc extends AbstractOperatorDesc {
   }
 
   @Explain(displayName = "value expressions")
+  public String getValueColsString() {
+    return PlanUtils.getExprListString(valueCols);
+  }
+
   public java.util.ArrayList<ExprNodeDesc> getValueCols() {
     return valueCols;
   }
@@ -160,6 +199,10 @@ public class ReduceSinkDesc extends AbstractOperatorDesc {
   }
 
   @Explain(displayName = "Map-reduce partition columns")
+  public String getParitionColsString() {
+    return PlanUtils.getExprListString(partitionCols);
+  }
+
   public java.util.ArrayList<ExprNodeDesc> getPartitionCols() {
     return partitionCols;
   }
@@ -169,13 +212,55 @@ public class ReduceSinkDesc extends AbstractOperatorDesc {
     this.partitionCols = partitionCols;
   }
 
-  @Explain(displayName = "tag")
+  @Explain(displayName = "tag", normalExplain = false)
   public int getTag() {
     return tag;
   }
 
   public void setTag(int tag) {
     this.tag = tag;
+  }
+
+  public int getTopN() {
+    return topN;
+  }
+
+  public void setTopN(int topN) {
+    this.topN = topN;
+  }
+
+  @Explain(displayName = "TopN", normalExplain = false)
+  public Integer getTopNExplain() {
+    return topN > 0 ? topN : null;
+  }
+
+  public float getTopNMemoryUsage() {
+    return topNMemoryUsage;
+  }
+
+  public void setTopNMemoryUsage(float topNMemoryUsage) {
+    this.topNMemoryUsage = topNMemoryUsage;
+  }
+
+  @Explain(displayName = "TopN Hash Memory Usage")
+  public Float getTopNMemoryUsageExplain() {
+    return topN > 0 && topNMemoryUsage > 0 ? topNMemoryUsage : null;
+  }
+
+  public boolean isMapGroupBy() {
+    return mapGroupBy;
+  }
+
+  public void setMapGroupBy(boolean mapGroupBy) {
+    this.mapGroupBy = mapGroupBy;
+  }
+
+  public boolean isPTFReduceSink() {
+    return isPTFReduceSink;
+  }
+
+  public void setPTFReduceSink(boolean isPTFReduceSink) {
+    this.isPTFReduceSink = isPTFReduceSink;
   }
 
   /**
@@ -234,5 +319,52 @@ public class ReduceSinkDesc extends AbstractOperatorDesc {
   public void setDistinctColumnIndices(
       List<List<Integer>> distinctColumnIndices) {
     this.distinctColumnIndices = distinctColumnIndices;
+  }
+
+  public String getOutputName() {
+    return outputName;
+  }
+
+  public void setOutputName(String outputName) {
+    this.outputName = outputName;
+  }
+
+  public int getNumBuckets() {
+    return numBuckets;
+  }
+
+  public void setNumBuckets(int numBuckets) {
+    this.numBuckets = numBuckets;
+  }
+
+  public List<ExprNodeDesc> getBucketCols() {
+    return bucketCols;
+  }
+
+  public void setBucketCols(List<ExprNodeDesc> bucketCols) {
+    this.bucketCols = bucketCols;
+  }
+
+  public void setSkipTag(boolean value) {
+    this.skipTag = value;
+  }
+
+  public boolean getSkipTag() {
+    return skipTag;
+  }
+
+  @Explain(displayName = "auto parallelism", normalExplain = false)
+  public final boolean isAutoParallel() {
+    return (autoParallel != null) && autoParallel;
+  }
+
+  public final void setAutoParallel(final boolean autoParallel) {
+    // we don't allow turning on auto parallel once it has been
+    // explicitly turned off. That is to avoid scenarios where
+    // auto parallelism could break assumptions about number of
+    // reducers or hash function.
+    if (this.autoParallel == null || this.autoParallel == true) {
+      this.autoParallel = autoParallel;
+    }
   }
 }

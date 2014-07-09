@@ -59,14 +59,14 @@ public class ExprNodeConstantDesc extends ExprNodeDesc implements Serializable {
 
   @Override
   public ConstantObjectInspector getWritableObjectInspector() {
-    PrimitiveCategory pc = ((PrimitiveTypeInfo)getTypeInfo())
-        .getPrimitiveCategory();
+    PrimitiveTypeInfo pti = (PrimitiveTypeInfo) getTypeInfo();
+    PrimitiveCategory pc = pti.getPrimitiveCategory();
     // Convert from Java to Writable
     Object writableValue = PrimitiveObjectInspectorFactory
-        .getPrimitiveJavaObjectInspector(pc).getPrimitiveWritableObject(
+        .getPrimitiveJavaObjectInspector(pti).getPrimitiveWritableObject(
           getValue());
     return PrimitiveObjectInspectorFactory
-        .getPrimitiveWritableConstantObjectInspector(pc, writableValue);
+        .getPrimitiveWritableConstantObjectInspector((PrimitiveTypeInfo) getTypeInfo(), writableValue);
   }
 
 
@@ -75,7 +75,6 @@ public class ExprNodeConstantDesc extends ExprNodeDesc implements Serializable {
     return "Const " + typeInfo.toString() + " " + value;
   }
 
-  @Explain(displayName = "expr")
   @Override
   public String getExprString() {
     if (value == null) {
@@ -103,7 +102,11 @@ public class ExprNodeConstantDesc extends ExprNodeDesc implements Serializable {
     if (!typeInfo.equals(dest.getTypeInfo())) {
       return false;
     }
-    if (!value.equals(dest.getValue())) {
+    if (value == null) {
+      if (dest.getValue() != null) {
+        return false;
+      }
+    } else if (!value.equals(dest.getValue())) {
       return false;
     }
 

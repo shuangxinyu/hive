@@ -18,13 +18,12 @@
 
 package org.apache.hadoop.hive.cli;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.metadata.Hive;
-import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.service.HiveClient;
 import org.apache.thrift.TException;
@@ -35,7 +34,7 @@ import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
 
 /**
- * CliSessionState.
+ * SessionState for hive cli.
  *
  */
 public class CliSessionState extends SessionState {
@@ -75,13 +74,6 @@ public class CliSessionState extends SessionState {
   private TTransport transport;
   private HiveClient client;
 
-  private Hive hive; // currently only used (and init'ed) in getCurrentDbName
-
-  public CliSessionState() {
-    super();
-    remoteMode = false;
-  }
-
   public CliSessionState(HiveConf conf) {
     super(conf);
     remoteMode = false;
@@ -110,12 +102,16 @@ public class CliSessionState extends SessionState {
     return port;
   }
 
+  @Override
   public void close() {
     try {
+      super.close();
       if (remoteMode) {
         client.clean();
         transport.close();
       }
+    } catch (IOException ioe) {
+      ioe.printStackTrace();
     } catch (TException e) {
       e.printStackTrace();
     }
@@ -129,18 +125,4 @@ public class CliSessionState extends SessionState {
     return client;
   }
 
-  /**
-   * Return the name of the current database
-   * @return the name of the current database or, if an error, null
-   */
-  public String getCurrentDbName() {
-    if (hive == null) {
-      try {
-        hive = Hive.get(conf);
-      } catch (HiveException e) {
-        return null;
-      }
-    }
-    return hive.getCurrentDatabase();
-  }
 }

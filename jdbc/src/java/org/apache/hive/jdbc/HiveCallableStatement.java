@@ -46,12 +46,13 @@ import java.util.Map;
  *
  */
 public class HiveCallableStatement implements java.sql.CallableStatement {
+  private final Connection connection;
 
   /**
    *
    */
-  public HiveCallableStatement() {
-    // TODO Auto-generated constructor stub
+  public HiveCallableStatement(Connection connection) {
+    this.connection = connection;
   }
 
   /*
@@ -459,6 +460,16 @@ public class HiveCallableStatement implements java.sql.CallableStatement {
 
   public Object getObject(String parameterName) throws SQLException {
     // TODO Auto-generated method stub
+    throw new SQLException("Method not supported");
+  }
+
+  public <T> T getObject(int parameterIndex, Class<T> type) throws SQLException {
+    // TODO JDK 1.7
+    throw new SQLException("Method not supported");
+  }
+
+  public <T> T getObject(String parameterName, Class<T> type) throws SQLException {
+    // TODO JDK 1.7
     throw new SQLException("Method not supported");
   }
 
@@ -1377,7 +1388,7 @@ public class HiveCallableStatement implements java.sql.CallableStatement {
    */
 
   public ResultSet executeQuery() throws SQLException {
-    return new HiveQueryResultSet.Builder().build();
+    return new HiveQueryResultSet.Builder(this).build();
   }
 
   /*
@@ -2030,6 +2041,16 @@ public class HiveCallableStatement implements java.sql.CallableStatement {
     throw new SQLException("Method not supported");
   }
 
+  public void closeOnCompletion() throws SQLException {
+    // JDK 1.7
+    throw new SQLException("Method not supported");
+  }
+
+  public boolean isCloseOnCompletion() throws SQLException {
+    // JDK 1.7
+    throw new SQLException("Method not supported");
+  }
+
   /*
    * (non-Javadoc)
    *
@@ -2149,8 +2170,7 @@ public class HiveCallableStatement implements java.sql.CallableStatement {
    */
 
   public Connection getConnection() throws SQLException {
-    // TODO Auto-generated method stub
-    throw new SQLException("Method not supported");
+    return this.connection;
   }
 
   /*

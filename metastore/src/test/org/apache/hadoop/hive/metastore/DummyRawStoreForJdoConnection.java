@@ -27,6 +27,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.ColumnStatistics;
 import org.apache.hadoop.hive.metastore.api.Database;
+import org.apache.hadoop.hive.metastore.api.Function;
+import org.apache.hadoop.hive.metastore.api.HiveObjectPrivilege;
 import org.apache.hadoop.hive.metastore.api.Index;
 import org.apache.hadoop.hive.metastore.api.InvalidInputException;
 import org.apache.hadoop.hive.metastore.api.InvalidObjectException;
@@ -51,6 +53,7 @@ import org.apache.hadoop.hive.metastore.model.MPartitionPrivilege;
 import org.apache.hadoop.hive.metastore.model.MRoleMap;
 import org.apache.hadoop.hive.metastore.model.MTableColumnPrivilege;
 import org.apache.hadoop.hive.metastore.model.MTablePrivilege;
+import org.apache.thrift.TException;
 
 /**
  *
@@ -322,6 +325,12 @@ public class DummyRawStoreForJdoConnection implements RawStore {
   }
 
   @Override
+  public boolean getPartitionsByExpr(String dbName, String tblName, byte[] expr,
+      String defaultPartitionName, short maxParts, List<Partition> result) throws TException {
+    return false;
+  }
+
+  @Override
   public Table markPartitionForEvent(String dbName, String tblName, Map<String, String> partVals,
       PartitionEventType evtType) throws MetaException, UnknownTableException,
       InvalidPartitionException, UnknownPartitionException {
@@ -478,6 +487,11 @@ public class DummyRawStoreForJdoConnection implements RawStore {
   }
 
   @Override
+  public List<MRoleMap> listRoleMembers(String roleName) {
+    return null;
+  }
+
+  @Override
   public Partition getPartitionWithAuth(String dbName, String tblName, List<String> partVals,
       String user_name, List<String> group_names) throws MetaException, NoSuchObjectException,
       InvalidObjectException {
@@ -515,11 +529,109 @@ public class DummyRawStoreForJdoConnection implements RawStore {
   }
 
   @Override
-  public ColumnStatistics getTableColumnStatistics(String dbName, String tableName, String colName)
-      throws MetaException, NoSuchObjectException {
+  public boolean addToken(String tokenIdentifier, String delegationToken) {
+    return false;
+  }
+
+  @Override
+  public boolean removeToken(String tokenIdentifier) {
+    return false;
+  }
+
+  @Override
+  public String getToken(String tokenIdentifier) {
     return null;
   }
 
+  @Override
+  public List<String> getAllTokenIdentifiers() {
+    return null;
+  }
+
+  @Override
+  public int addMasterKey(String key) {
+    return 0;
+  }
+
+  @Override
+  public void updateMasterKey(Integer seqNo, String key) {
+  }
+
+  @Override
+  public boolean removeMasterKey(Integer keySeq) {
+    return false;
+  }
+
+  @Override
+  public String[] getMasterKeys() {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listPrincipalDBGrantsAll(
+      String principalName, PrincipalType principalType) {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listPrincipalTableGrantsAll(
+      String principalName, PrincipalType principalType) {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listPrincipalPartitionGrantsAll(
+      String principalName, PrincipalType principalType) {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listPrincipalTableColumnGrantsAll(
+      String principalName, PrincipalType principalType) {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listPrincipalPartitionColumnGrantsAll(
+      String principalName, PrincipalType principalType) {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listGlobalGrantsAll() {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listDBGrantsAll(String dbName) {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listPartitionColumnGrantsAll(String dbName, String tableName, String partitionName, String columnName) {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listTableGrantsAll(String dbName, String tableName) {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listPartitionGrantsAll(String dbName, String tableName, String partitionName) {
+    return null;
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listTableColumnGrantsAll(String dbName, String tableName, String columnName) {
+    return null;
+  }
+
+  @Override
+  public  ColumnStatistics getTableColumnStatistics(String dbName, String tableName,
+      List<String> colName) throws MetaException, NoSuchObjectException {
+    return null;
+  }
 
   @Override
   public boolean deleteTableColumnStatistics(String dbName, String tableName,
@@ -529,6 +641,7 @@ public class DummyRawStoreForJdoConnection implements RawStore {
   }
 
 
+  @Override
   public boolean deletePartitionColumnStatistics(String dbName, String tableName,
     String partName, List<String> partVals, String colName)
     throws NoSuchObjectException, MetaException, InvalidObjectException,
@@ -538,22 +651,82 @@ public class DummyRawStoreForJdoConnection implements RawStore {
   }
 
   @Override
-  public ColumnStatistics getPartitionColumnStatistics(String dbName, String tableName,
-    String partName, List<String> partVal, String colName) throws MetaException,
-    NoSuchObjectException, InvalidInputException, InvalidObjectException  {
-    return null;
-  }
-
-  @Override
   public boolean updateTableColumnStatistics(ColumnStatistics statsObj)
       throws NoSuchObjectException, MetaException, InvalidObjectException {
     return false;
   }
 
+  @Override
   public boolean updatePartitionColumnStatistics(ColumnStatistics statsObj,List<String> partVals)
     throws NoSuchObjectException, MetaException, InvalidObjectException {
     return false;
   }
+
+  @Override
+  public void verifySchema() throws MetaException {
+  }
+
+  @Override
+  public String getMetaStoreSchemaVersion() throws MetaException {
+    return null;
+  }
+
+  @Override
+  public void setMetaStoreSchemaVersion(String version, String comment) throws MetaException {
+  }
+
+  @Override
+  public List<ColumnStatistics> getPartitionColumnStatistics(String dbName,
+      String tblName, List<String> colNames, List<String> partNames)
+      throws MetaException, NoSuchObjectException {
+    return null;
+  }
+
+  @Override
+  public boolean doesPartitionExist(String dbName, String tableName,
+      List<String> partVals) throws MetaException, NoSuchObjectException {
+    return false;
+  }
+
+  @Override
+  public boolean addPartitions(String dbName, String tblName, List<Partition> parts)
+      throws InvalidObjectException, MetaException {
+    return false;
+  }
+
+  @Override
+  public void dropPartitions(String dbName, String tblName, List<String> partNames) {
+  }
+
+  @Override
+  public void createFunction(Function func) throws InvalidObjectException,
+      MetaException {
+  }
+
+  @Override
+  public void alterFunction(String dbName, String funcName, Function newFunction)
+      throws InvalidObjectException, MetaException {
+  }
+
+  @Override
+  public void dropFunction(String dbName, String funcName)
+      throws MetaException, NoSuchObjectException, InvalidObjectException,
+      InvalidInputException {
+  }
+
+  @Override
+  public Function getFunction(String dbName, String funcName)
+      throws MetaException {
+    return null;
+  }
+
+  @Override
+  public List<String> getFunctions(String dbName, String pattern)
+      throws MetaException {
+    return null;
+  }
+
+
 }
 
 

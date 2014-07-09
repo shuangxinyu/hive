@@ -38,10 +38,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.ConditionalTask;
-import org.apache.hadoop.hive.ql.exec.ExecDriver;
+import org.apache.hadoop.hive.ql.exec.ExplainTask;
 import org.apache.hadoop.hive.ql.exec.FetchTask;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.Task;
+import org.apache.hadoop.hive.ql.exec.mr.ExecDriver;
 import org.apache.hadoop.hive.ql.hooks.LineageInfo;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
@@ -109,6 +110,10 @@ public class QueryPlan implements Serializable {
   }
 
   public QueryPlan(String queryString, BaseSemanticAnalyzer sem, Long startTime) {
+    this(queryString, sem, startTime, null);
+  }
+
+  public QueryPlan(String queryString, BaseSemanticAnalyzer sem, Long startTime, String queryId) {
     this.queryString = queryString;
 
     rootTasks = new ArrayList<Task<? extends Serializable>>();
@@ -123,9 +128,9 @@ public class QueryPlan implements Serializable {
     columnAccessInfo = sem.getColumnAccessInfo();
     idToTableNameMap = new HashMap<String, String>(sem.getIdToTableNameMap());
 
-    queryId = makeQueryId();
+    this.queryId = queryId == null ? makeQueryId() : queryId;
     query = new org.apache.hadoop.hive.ql.plan.api.Query();
-    query.setQueryId(queryId);
+    query.setQueryId(this.queryId);
     query.putToQueryAttributes("queryString", this.queryString);
     queryProperties = sem.getQueryProperties();
     queryStartTime = startTime;
@@ -139,7 +144,7 @@ public class QueryPlan implements Serializable {
     return queryId;
   }
 
-  private String makeQueryId() {
+  public static String makeQueryId() {
     GregorianCalendar gc = new GregorianCalendar();
     String userid = System.getProperty("user.name");
 
@@ -233,7 +238,7 @@ public class QueryPlan implements Serializable {
         mapTask.setTaskId(stage.getStageId() + "_MAP");
         mapTask.setTaskType(TaskType.MAP);
         stage.addToTaskList(mapTask);
-        populateOperatorGraph(mapTask, mrTask.getWork().getAliasToWork()
+        populateOperatorGraph(mapTask, mrTask.getWork().getMapWork().getAliasToWork()
             .values());
 
         // populate reduce task
@@ -245,7 +250,7 @@ public class QueryPlan implements Serializable {
           stage.addToTaskList(reduceTask);
           Collection<Operator<? extends OperatorDesc>> reducerTopOps =
             new ArrayList<Operator<? extends OperatorDesc>>();
-          reducerTopOps.add(mrTask.getWork().getReducer());
+          reducerTopOps.add(mrTask.getWork().getReduceWork().getReducer());
           populateOperatorGraph(reduceTask, reducerTopOps);
         }
       } else {
@@ -333,7 +338,6 @@ public class QueryPlan implements Serializable {
               // if the task has started, all operators within the task have
               // started
               op.setStarted(started.contains(task.getTaskId()));
-              op.setOperatorCounters(counters.get(op.getOperatorId()));
               // if the task is done, all operators are done as well
               op.setDone(done.contains(task.getTaskId()));
             }
@@ -382,8 +386,6 @@ public class QueryPlan implements Serializable {
       }
       if (task instanceof ExecDriver) {
         ExecDriver mrTask = (ExecDriver) task;
-        extractOperatorCounters(mrTask.getWork().getAliasToWork().values(),
-            task.getId() + "_MAP");
         if (mrTask.mapStarted()) {
           started.add(task.getId() + "_MAP");
         }
@@ -391,10 +393,6 @@ public class QueryPlan implements Serializable {
           done.add(task.getId() + "_MAP");
         }
         if (mrTask.hasReduce()) {
-          Collection<Operator<? extends OperatorDesc>> reducerTopOps =
-            new ArrayList<Operator<? extends OperatorDesc>>();
-          reducerTopOps.add(mrTask.getWork().getReducer());
-          extractOperatorCounters(reducerTopOps, task.getId() + "_REDUCE");
           if (mrTask.reduceStarted()) {
             started.add(task.getId() + "_REDUCE");
           }
@@ -411,34 +409,6 @@ public class QueryPlan implements Serializable {
         }
       }
     }
-  }
-
-  private void extractOperatorCounters(
-      Collection<Operator<? extends OperatorDesc>> topOps, String taskId) {
-    Queue<Operator<? extends OperatorDesc>> opsToVisit =
-      new LinkedList<Operator<? extends OperatorDesc>>();
-    Set<Operator<? extends OperatorDesc>> opsVisited =
-      new HashSet<Operator<? extends OperatorDesc>>();
-    opsToVisit.addAll(topOps);
-    while (opsToVisit.size() != 0) {
-      Operator<? extends OperatorDesc> op = opsToVisit.remove();
-      opsVisited.add(op);
-      Map<String,Long> ctrs = op.getCounters();
-      if (ctrs != null) {
-        counters.put(op.getOperatorId(), op.getCounters());
-      }
-      if (op.getDone()) {
-        done.add(op.getOperatorId());
-      }
-      if (op.getChildOperators() != null) {
-        for (Operator<? extends OperatorDesc> childOp : op.getChildOperators()) {
-          if (!opsVisited.contains(childOp)) {
-            opsToVisit.add(childOp);
-          }
-        }
-      }
-    }
-
   }
 
   public org.apache.hadoop.hive.ql.plan.api.Query getQueryPlan()
@@ -616,6 +586,10 @@ public class QueryPlan implements Serializable {
     return sb.toString();
   }
 
+  public boolean isExplain() {
+    return rootTasks.size() == 1 && rootTasks.get(0) instanceof ExplainTask;
+  }
+
   @Override
   public String toString() {
     try {
@@ -680,6 +654,10 @@ public class QueryPlan implements Serializable {
 
   public void setRootTasks(ArrayList<Task<? extends Serializable>> rootTasks) {
     this.rootTasks = rootTasks;
+  }
+
+  public boolean isForExplain() {
+    return rootTasks.size() == 1 && rootTasks.get(0) instanceof ExplainTask;
   }
 
   public FetchTask getFetchTask() {
@@ -772,7 +750,7 @@ public class QueryPlan implements Serializable {
   /**
    * Sets the table access information.
    *
-   * @param taInfo The TableAccessInfo structure that is set right before the optimization phase.
+   * @param tableAccessInfo The TableAccessInfo structure that is set right before the optimization phase.
    */
   public void setTableAccessInfo(TableAccessInfo tableAccessInfo) {
     this.tableAccessInfo = tableAccessInfo;

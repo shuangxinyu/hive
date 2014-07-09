@@ -17,32 +17,36 @@
  */
 package org.apache.hadoop.hive.ql.udf.generic;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentTypeException;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
-import org.apache.hadoop.hive.ql.udf.UDFOPDivide;
+import org.apache.hadoop.hive.ql.parse.WindowingSpec.BoundarySpec;
+import org.apache.hadoop.hive.ql.plan.ptf.BoundaryDef;
+import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFEvaluator.AggregationBuffer;
-import org.apache.hadoop.hive.serde2.io.BigDecimalWritable;
+import org.apache.hadoop.hive.ql.util.JavaDataModel;
 import org.apache.hadoop.hive.serde2.io.DoubleWritable;
+import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.BigDecimalObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.DoubleObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveDecimalObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.LongObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
+import org.apache.hadoop.hive.serde2.typeinfo.DecimalTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.util.StringUtils;
 
@@ -66,7 +70,7 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
     if (parameters[0].getCategory() != ObjectInspector.Category.PRIMITIVE) {
       throw new UDFArgumentTypeException(0,
           "Only primitive type arguments are accepted but "
-          + parameters[0].getTypeName() + " is passed.");
+              + parameters[0].getTypeName() + " is passed.");
     }
     switch (((PrimitiveTypeInfo) parameters[0]).getPrimitiveCategory()) {
     case BYTE:
@@ -76,15 +80,18 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
     case FLOAT:
     case DOUBLE:
     case STRING:
+    case VARCHAR:
+    case CHAR:
     case TIMESTAMP:
       return new GenericUDAFAverageEvaluatorDouble();
     case DECIMAL:
       return new GenericUDAFAverageEvaluatorDecimal();
     case BOOLEAN:
+    case DATE:
     default:
       throw new UDFArgumentTypeException(0,
           "Only numeric or string type arguments are accepted but "
-          + parameters[0].getTypeName() + " is passed.");
+              + parameters[0].getTypeName() + " is passed.");
     }
   }
 
@@ -148,67 +155,173 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
       reset(result);
       return result;
     }
-  }
-
-  public static class GenericUDAFAverageEvaluatorDecimal extends AbstractGenericUDAFAverageEvaluator<BigDecimal> {
 
     @Override
-    public void doReset(AverageAggregationBuffer<BigDecimal> aggregation) throws HiveException {
+    public GenericUDAFEvaluator getWindowingEvaluator(WindowFrameDef wFrmDef) {
+
+      BoundaryDef start = wFrmDef.getStart();
+      BoundaryDef end = wFrmDef.getEnd();
+
+      return new GenericUDAFStreamingEvaluator.SumAvgEnhancer<DoubleWritable, Object[]>(this,
+          start.getAmt(), end.getAmt()) {
+
+        @Override
+        protected DoubleWritable getNextResult(
+            org.apache.hadoop.hive.ql.udf.generic.GenericUDAFStreamingEvaluator.SumAvgEnhancer<DoubleWritable, Object[]>.SumAvgStreamingState ss)
+            throws HiveException {
+          AverageAggregationBuffer<Double> myagg = (AverageAggregationBuffer<Double>) ss.wrappedBuf;
+          Double r = myagg.count == 0 ? null : myagg.sum;
+          long cnt = myagg.count;
+          if (ss.numPreceding != BoundarySpec.UNBOUNDED_AMOUNT
+              && (ss.numRows - ss.numFollowing) >= (ss.numPreceding + 1)) {
+            Object[] o = ss.intermediateVals.remove(0);
+            Double d = o == null ? 0.0 : (Double) o[0];
+            r = r == null ? null : r - d;
+            cnt = cnt - ((Long) o[1]);
+          }
+
+          return r == null ? null : new DoubleWritable(r / cnt);
+        }
+
+        @Override
+        protected Object[] getCurrentIntermediateResult(
+            org.apache.hadoop.hive.ql.udf.generic.GenericUDAFStreamingEvaluator.SumAvgEnhancer<DoubleWritable, Object[]>.SumAvgStreamingState ss)
+            throws HiveException {
+          AverageAggregationBuffer<Double> myagg = (AverageAggregationBuffer<Double>) ss.wrappedBuf;
+          return myagg.count == 0 ? null : new Object[] {
+              new Double(myagg.sum), myagg.count };
+        }
+
+      };
+    }
+  }
+
+  public static class GenericUDAFAverageEvaluatorDecimal extends AbstractGenericUDAFAverageEvaluator<HiveDecimal> {
+
+    @Override
+    public void doReset(AverageAggregationBuffer<HiveDecimal> aggregation) throws HiveException {
       aggregation.count = 0;
-      aggregation.sum = BigDecimal.ZERO;
+      aggregation.sum = HiveDecimal.ZERO;
     }
 
     @Override
     protected ObjectInspector getSumFieldJavaObjectInspector() {
-      return PrimitiveObjectInspectorFactory.javaBigDecimalObjectInspector;
+      DecimalTypeInfo typeInfo = deriveResultDecimalTypeInfo();
+      return PrimitiveObjectInspectorFactory.getPrimitiveJavaObjectInspector(typeInfo);
     }
+
     @Override
     protected ObjectInspector getSumFieldWritableObjectInspector() {
-      return PrimitiveObjectInspectorFactory.writableBigDecimalObjectInspector;
+      DecimalTypeInfo typeInfo = deriveResultDecimalTypeInfo();
+      return PrimitiveObjectInspectorFactory.getPrimitiveWritableObjectInspector(typeInfo);
+    }
+
+    private DecimalTypeInfo deriveResultDecimalTypeInfo() {
+      int prec = inputOI.precision();
+      int scale = inputOI.scale();
+      if (mode == Mode.FINAL || mode == Mode.COMPLETE) {
+        int intPart = prec - scale;
+        // The avg() result type has the same number of integer digits and 4 more decimal digits.
+        scale = Math.min(scale + 4, HiveDecimal.MAX_SCALE - intPart);
+        return TypeInfoFactory.getDecimalTypeInfo(intPart + scale, scale);
+      } else {
+        // For intermediate sum field
+        return GenericUDAFAverage.deriveSumFieldTypeInfo(prec, scale);
+      }
     }
 
     @Override
-    protected void doIterate(AverageAggregationBuffer<BigDecimal> aggregation,
+    protected void doIterate(AverageAggregationBuffer<HiveDecimal> aggregation,
         PrimitiveObjectInspector oi, Object parameter) {
-      BigDecimal value = PrimitiveObjectInspectorUtils.getBigDecimal(parameter, oi);
+      HiveDecimal value = PrimitiveObjectInspectorUtils.getHiveDecimal(parameter, oi);
       aggregation.count++;
-      aggregation.sum = aggregation.sum.add(value);
-
+      if (aggregation.sum != null) {
+        aggregation.sum = aggregation.sum.add(value);
+      }
     }
 
     @Override
-    protected void doMerge(AverageAggregationBuffer<BigDecimal> aggregation, Long partialCount,
+    protected void doMerge(AverageAggregationBuffer<HiveDecimal> aggregation, Long partialCount,
         ObjectInspector sumFieldOI, Object partialSum) {
-      BigDecimal value = ((BigDecimalObjectInspector)sumFieldOI).getPrimitiveJavaObject(partialSum);
+      HiveDecimal value = ((HiveDecimalObjectInspector)sumFieldOI).getPrimitiveJavaObject(partialSum);
+      if (value == null) {
+        aggregation.sum = null;
+      }
       aggregation.count += partialCount;
-      aggregation.sum = aggregation.sum.add(value);
+      if (aggregation.sum != null) {
+        aggregation.sum = aggregation.sum.add(value);
+      }
     }
 
     @Override
-    protected void doTerminatePartial(AverageAggregationBuffer<BigDecimal> aggregation) {
-      if(partialResult[1] == null) {
-        partialResult[1] = new BigDecimalWritable(BigDecimal.ZERO);
+    protected void doTerminatePartial(AverageAggregationBuffer<HiveDecimal> aggregation) {
+      if(partialResult[1] == null && aggregation.sum != null) {
+        partialResult[1] = new HiveDecimalWritable(HiveDecimal.ZERO);
       }
       ((LongWritable) partialResult[0]).set(aggregation.count);
-      ((BigDecimalWritable) partialResult[1]).set(aggregation.sum);
+      if (aggregation.sum != null) {
+        ((HiveDecimalWritable) partialResult[1]).set(aggregation.sum);
+      } else {
+        partialResult[1] = null;
+      }
     }
 
     @Override
-    protected Object doTerminate(AverageAggregationBuffer<BigDecimal> aggregation) {
-      if(aggregation.count == 0) {
+    protected Object doTerminate(AverageAggregationBuffer<HiveDecimal> aggregation) {
+      if(aggregation.count == 0 || aggregation.sum == null) {
         return null;
       } else {
-        BigDecimalWritable result = new BigDecimalWritable(BigDecimal.ZERO);
-        result.set(aggregation.sum.divide(new BigDecimal(aggregation.count),
-            UDFOPDivide.MAX_SCALE, RoundingMode.HALF_UP));
+        HiveDecimalWritable result = new HiveDecimalWritable(HiveDecimal.ZERO);
+        result.set(aggregation.sum.divide(HiveDecimal.create(aggregation.count)));
         return result;
       }
     }
+
     @Override
     public AggregationBuffer getNewAggregationBuffer() throws HiveException {
-      AverageAggregationBuffer<BigDecimal> result = new AverageAggregationBuffer<BigDecimal>();
+      AverageAggregationBuffer<HiveDecimal> result = new AverageAggregationBuffer<HiveDecimal>();
       reset(result);
       return result;
+    }
+
+    @Override
+    public GenericUDAFEvaluator getWindowingEvaluator(WindowFrameDef wFrmDef) {
+
+      BoundaryDef start = wFrmDef.getStart();
+      BoundaryDef end = wFrmDef.getEnd();
+
+      return new GenericUDAFStreamingEvaluator.SumAvgEnhancer<HiveDecimalWritable, Object[]>(
+          this, start.getAmt(), end.getAmt()) {
+
+        @Override
+        protected HiveDecimalWritable getNextResult(
+            org.apache.hadoop.hive.ql.udf.generic.GenericUDAFStreamingEvaluator.SumAvgEnhancer<HiveDecimalWritable, Object[]>.SumAvgStreamingState ss)
+            throws HiveException {
+          AverageAggregationBuffer<HiveDecimal> myagg = (AverageAggregationBuffer<HiveDecimal>) ss.wrappedBuf;
+          HiveDecimal r = myagg.count == 0 ? null : myagg.sum;
+          long cnt = myagg.count;
+          if (ss.numPreceding != BoundarySpec.UNBOUNDED_AMOUNT
+              && (ss.numRows - ss.numFollowing) >= (ss.numPreceding + 1)) {
+            Object[] o = ss.intermediateVals.remove(0);
+            HiveDecimal d = o == null ? HiveDecimal.ZERO : (HiveDecimal) o[0];
+            r = r == null ? null : r.subtract(d);
+            cnt = cnt - ((Long) o[1]);
+          }
+
+          return r == null ? null : new HiveDecimalWritable(
+              r.divide(HiveDecimal.create(cnt)));
+        }
+
+        @Override
+        protected Object[] getCurrentIntermediateResult(
+            org.apache.hadoop.hive.ql.udf.generic.GenericUDAFStreamingEvaluator.SumAvgEnhancer<HiveDecimalWritable, Object[]>.SumAvgStreamingState ss)
+            throws HiveException {
+          AverageAggregationBuffer<HiveDecimal> myagg = (AverageAggregationBuffer<HiveDecimal>) ss.wrappedBuf;
+          return myagg.count == 0 ? null : new Object[] { myagg.sum,
+              myagg.count };
+        }
+
+      };
     }
   }
 
@@ -221,15 +334,15 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
   public static abstract class AbstractGenericUDAFAverageEvaluator<TYPE> extends GenericUDAFEvaluator {
 
     // For PARTIAL1 and COMPLETE
-    private PrimitiveObjectInspector inputOI;
+    protected transient PrimitiveObjectInspector inputOI;
     // For PARTIAL2 and FINAL
-    private StructObjectInspector soi;
-    private StructField countField;
-    private StructField sumField;
+    private transient StructObjectInspector soi;
+    private transient StructField countField;
+    private transient StructField sumField;
     private LongObjectInspector countFieldOI;
-    private ObjectInspector sumFieldOI;
+    protected ObjectInspector sumFieldOI;
     // For PARTIAL1 and PARTIAL2
-    protected Object[] partialResult;
+    protected transient Object[] partialResult;
 
     private boolean warned = false;
 
@@ -259,29 +372,39 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
         sumField = soi.getStructFieldRef("sum");
         countFieldOI = (LongObjectInspector) countField.getFieldObjectInspector();
         sumFieldOI = sumField.getFieldObjectInspector();
+        inputOI = (PrimitiveObjectInspector) soi.getStructFieldRef("input").getFieldObjectInspector();
       }
 
       // init output
       if (mode == Mode.PARTIAL1 || mode == Mode.PARTIAL2) {
         // The output of a partial aggregation is a struct containing
         // a "long" count and a "double" sum.
-
         ArrayList<ObjectInspector> foi = new ArrayList<ObjectInspector>();
         foi.add(PrimitiveObjectInspectorFactory.writableLongObjectInspector);
         foi.add(getSumFieldWritableObjectInspector());
+        // We need to "remember" the input object inspector so that we need to know the input type
+        // in order to determine the sum field type (precision/scale) for Mode.PARTIAL2 and Mode.FINAL.
+        foi.add(inputOI);
         ArrayList<String> fname = new ArrayList<String>();
         fname.add("count");
         fname.add("sum");
+        fname.add("input");
         partialResult = new Object[2];
         partialResult[0] = new LongWritable(0);
         // index 1 set by child
-        return ObjectInspectorFactory.getStandardStructObjectInspector(fname,
-            foi);
-
+        return ObjectInspectorFactory.getStandardStructObjectInspector(fname, foi);
       } else {
         return getSumFieldWritableObjectInspector();
       }
     }
+
+    @AggregationType(estimable = true)
+    static class AverageAgg extends AbstractAggregationBuffer {
+      long count;
+      double sum;
+      @Override
+      public int estimate() { return JavaDataModel.PRIMITIVES2 * 2; }
+    };
 
     @Override
     public void reset(AggregationBuffer aggregation) throws HiveException {
@@ -327,4 +450,18 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
       return doTerminate((AverageAggregationBuffer<TYPE>)aggregation);
     }
   }
+
+  /**
+   * The intermediate sum field has 10 more integer digits with the same scale.
+   * This is exposed as static so that the vectorized AVG operator use the same logic
+   * @param precision
+   * @param scale
+   * @return
+   */
+  public static DecimalTypeInfo deriveSumFieldTypeInfo(int precision, int scale) {
+    int intPart = precision - scale;
+    intPart = Math.min(intPart + 10, HiveDecimal.MAX_PRECISION - scale);
+    return TypeInfoFactory.getDecimalTypeInfo(intPart + scale, scale);
+  }
+
 }

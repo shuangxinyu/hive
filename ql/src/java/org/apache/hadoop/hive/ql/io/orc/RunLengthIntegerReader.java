@@ -20,10 +20,12 @@ package org.apache.hadoop.hive.ql.io.orc;
 import java.io.EOFException;
 import java.io.IOException;
 
+import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
+
 /**
  * A reader that reads a sequence of integers.
  * */
-class RunLengthIntegerReader {
+class RunLengthIntegerReader implements IntegerReader {
   private final InStream input;
   private final boolean signed;
   private final long[] literals =
@@ -32,10 +34,12 @@ class RunLengthIntegerReader {
   private int delta = 0;
   private int used = 0;
   private boolean repeat = false;
+  private SerializationUtils utils;
 
   RunLengthIntegerReader(InStream input, boolean signed) throws IOException {
     this.input = input;
     this.signed = signed;
+    this.utils = new SerializationUtils();
   }
 
   private void readValues() throws IOException {
@@ -53,9 +57,9 @@ class RunLengthIntegerReader {
       // convert from 0 to 255 to -128 to 127 by converting to a signed byte
       delta = (byte) (0 + delta);
       if (signed) {
-        literals[0] = SerializationUtils.readVslong(input);
+        literals[0] = utils.readVslong(input);
       } else {
-        literals[0] = SerializationUtils.readVulong(input);
+        literals[0] = utils.readVulong(input);
       }
     } else {
       repeat = false;
@@ -63,19 +67,21 @@ class RunLengthIntegerReader {
       used = 0;
       for(int i=0; i < numLiterals; ++i) {
         if (signed) {
-          literals[i] = SerializationUtils.readVslong(input);
+          literals[i] = utils.readVslong(input);
         } else {
-          literals[i] = SerializationUtils.readVulong(input);
+          literals[i] = utils.readVulong(input);
         }
       }
     }
   }
 
-  boolean hasNext() throws IOException {
+  @Override
+  public boolean hasNext() throws IOException {
     return used != numLiterals || input.available() > 0;
   }
 
-  long next() throws IOException {
+  @Override
+  public long next() throws IOException {
     long result;
     if (used == numLiterals) {
       readValues();
@@ -88,7 +94,32 @@ class RunLengthIntegerReader {
     return result;
   }
 
-  void seek(PositionProvider index) throws IOException {
+  @Override
+  public void nextVector(LongColumnVector previous, long previousLen)
+      throws IOException {
+    previous.isRepeating = true;
+    for (int i = 0; i < previousLen; i++) {
+      if (!previous.isNull[i]) {
+        previous.vector[i] = next();
+      } else {
+        // The default value of null for int type in vectorized
+        // processing is 1, so set that if the value is null
+        previous.vector[i] = 1;
+      }
+
+      // The default value for nulls in Vectorization for int types is 1
+      // and given that non null value can also be 1, we need to check for isNull also
+      // when determining the isRepeating flag.
+      if (previous.isRepeating
+          && i > 0
+          && (previous.vector[i - 1] != previous.vector[i] || previous.isNull[i - 1] != previous.isNull[i])) {
+        previous.isRepeating = false;
+      }
+    }
+  }
+
+  @Override
+  public void seek(PositionProvider index) throws IOException {
     input.seek(index);
     int consumed = (int) index.getNext();
     if (consumed != 0) {
@@ -104,7 +135,8 @@ class RunLengthIntegerReader {
     }
   }
 
-  void skip(long numValues) throws IOException {
+  @Override
+  public void skip(long numValues) throws IOException {
     while (numValues > 0) {
       if (used == numLiterals) {
         readValues();

@@ -44,6 +44,10 @@ $GLOBALS['serde_CONSTANTS']['QUOTE_CHAR'] = "quote.delim";
 
 $GLOBALS['serde_CONSTANTS']['ESCAPE_CHAR'] = "escape.delim";
 
+$GLOBALS['serde_CONSTANTS']['HEADER_COUNT'] = "skip.header.line.count";
+
+$GLOBALS['serde_CONSTANTS']['FOOTER_COUNT'] = "skip.footer.line.count";
+
 $GLOBALS['serde_CONSTANTS']['VOID_TYPE_NAME'] = "void";
 
 $GLOBALS['serde_CONSTANTS']['BOOLEAN_TYPE_NAME'] = "boolean";
@@ -61,6 +65,10 @@ $GLOBALS['serde_CONSTANTS']['FLOAT_TYPE_NAME'] = "float";
 $GLOBALS['serde_CONSTANTS']['DOUBLE_TYPE_NAME'] = "double";
 
 $GLOBALS['serde_CONSTANTS']['STRING_TYPE_NAME'] = "string";
+
+$GLOBALS['serde_CONSTANTS']['CHAR_TYPE_NAME'] = "char";
+
+$GLOBALS['serde_CONSTANTS']['VARCHAR_TYPE_NAME'] = "varchar";
 
 $GLOBALS['serde_CONSTANTS']['DATE_TYPE_NAME'] = "date";
 
@@ -94,6 +102,8 @@ $GLOBALS['serde_CONSTANTS']['PrimitiveTypes'] = array(
   "float" => true,
   "double" => true,
   "string" => true,
+  "varchar" => true,
+  "char" => true,
   "date" => true,
   "datetime" => true,
   "timestamp" => true,
@@ -104,6 +114,13 @@ $GLOBALS['serde_CONSTANTS']['PrimitiveTypes'] = array(
 $GLOBALS['serde_CONSTANTS']['CollectionTypes'] = array(
   "array" => true,
   "map" => true,
+);
+
+$GLOBALS['serde_CONSTANTS']['IntegralTypes'] = array(
+  "tinyint" => true,
+  "smallint" => true,
+  "int" => true,
+  "bigint" => true,
 );
 
 

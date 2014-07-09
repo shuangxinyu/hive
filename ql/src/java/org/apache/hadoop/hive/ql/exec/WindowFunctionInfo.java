@@ -18,15 +18,14 @@
 
 package org.apache.hadoop.hive.ql.exec;
 
-import org.apache.hadoop.hive.ql.exec.FunctionInfo;
-import org.apache.hadoop.hive.ql.exec.WindowFunctionDescription;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFResolver;
 
 @SuppressWarnings("deprecation")
-public class WindowFunctionInfo
+public class WindowFunctionInfo implements CommonFunctionInfo
 {
 	boolean supportsWindow = true;
 	boolean pivotResult = false;
+	boolean impliesOrder = false;
 	FunctionInfo fInfo;
 
 	WindowFunctionInfo(FunctionInfo fInfo)
@@ -39,6 +38,7 @@ public class WindowFunctionInfo
 		{
 			supportsWindow = def.supportsWindow();
 			pivotResult = def.pivotResult();
+			impliesOrder = def.impliesOrder();
 		}
 	}
 
@@ -52,8 +52,16 @@ public class WindowFunctionInfo
 		return pivotResult;
 	}
 
+	public boolean isImpliesOrder(){
+	  return impliesOrder;
+	}
 	public FunctionInfo getfInfo()
 	{
 		return fInfo;
 	}
+
+  @Override
+  public Class<?> getFunctionClass() {
+    return getfInfo().getFunctionClass();
+  }
 }

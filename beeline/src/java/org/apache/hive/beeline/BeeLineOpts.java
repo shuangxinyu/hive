@@ -1,46 +1,24 @@
-/*
- *  Copyright (c) 2002,2003,2004,2005 Marc Prud'hommeaux
- *  All rights reserved.
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Redistribution and use in source and binary forms,
- *  with or without modification, are permitted provided
- *  that the following conditions are met:
- *
- *  Redistributions of source code must retain the above
- *  copyright notice, this list of conditions and the following
- *  disclaimer.
- *  Redistributions in binary form must reproduce the above
- *  copyright notice, this list of conditions and the following
- *  disclaimer in the documentation and/or other materials
- *  provided with the distribution.
- *  Neither the name of the <ORGANIZATION> nor the names
- *  of its contributors may be used to endorse or promote
- *  products derived from this software without specific
- *  prior written permission.
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS
- *  AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- *  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- *  PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- *  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- *  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- *  BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- *  OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
- *  IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- *  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *  This software is hosted by SourceForge.
- *  SourceForge is a trademark of VA Linux Systems, Inc.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 /*
  * This source file is based on code taken from SQLLine 1.0.2
- * The license above originally appeared in src/sqlline/SqlLine.java
- * http://sqlline.sourceforge.net/
+ * See SQLLine notice in LICENSE
  */
 package org.apache.hive.beeline;
 
@@ -53,8 +31,10 @@ import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.TreeSet;
 
@@ -72,6 +52,7 @@ class BeeLineOpts implements Completor {
   public static final String PROPERTY_PREFIX = "beeline.";
   public static final String PROPERTY_NAME_EXIT =
       PROPERTY_PREFIX + "system.exit";
+  public static final String DEFAULT_NULL_STRING = "NULL";
 
   private final BeeLine beeLine;
   private boolean autosave = false;
@@ -96,10 +77,21 @@ class BeeLineOpts implements Completor {
   private String isolation = DEFAULT_ISOLATION_LEVEL;
   private String outputFormat = "table";
   private boolean trimScripts = true;
+  private boolean allowMultiLineCommand = true;
+
+  //This can be set for old behavior of nulls printed as empty strings
+  private boolean nullEmptyString = false;
 
   private final File rcFile = new File(saveDir(), "beeline.properties");
   private String historyFile = new File(saveDir(), "history").getAbsolutePath();
 
+  private String scriptFile = null;
+  private String initFile = null;
+  private String authType = null;
+
+
+  private Map<String, String> hiveVariables = new HashMap<String, String>();
+  private Map<String, String> hiveConfVariables = new HashMap<String, String>();
 
   public BeeLineOpts(BeeLine beeLine, Properties props) {
     this.beeLine = beeLine;
@@ -150,7 +142,8 @@ class BeeLineOpts implements Completor {
   public int complete(String buf, int pos, List cand) {
     try {
       return new SimpleCompletor(propertyNames()).complete(buf, pos, cand);
-    } catch (Throwable t) {
+    } catch (Exception e) {
+      beeLine.handleException(e);
       return -1;
     }
   }
@@ -258,6 +251,13 @@ class BeeLineOpts implements Completor {
     this.fastConnect = fastConnect;
   }
 
+  public String getAuthType() {
+    return authType;
+  }
+
+  public void setAuthType(String authType) {
+    this.authType = authType;
+  }
 
   public boolean getFastConnect() {
     return fastConnect;
@@ -351,6 +351,22 @@ class BeeLineOpts implements Completor {
     return historyFile;
   }
 
+  public void setScriptFile(String scriptFile) {
+    this.scriptFile = scriptFile;
+  }
+
+  public String getScriptFile() {
+    return scriptFile;
+  }
+
+  public String getInitFile() {
+    return initFile;
+  }
+
+  public void setInitFile(String initFile) {
+    this.initFile = initFile;
+  }
+
   public void setColor(boolean color) {
     this.color = color;
   }
@@ -434,4 +450,45 @@ class BeeLineOpts implements Completor {
   public File getPropertiesFile() {
     return rcFile;
   }
+
+  public Map<String, String> getHiveVariables() {
+    return hiveVariables;
+  }
+
+  public void setHiveVariables(Map<String, String> hiveVariables) {
+    this.hiveVariables = hiveVariables;
+  }
+
+  public boolean isAllowMultiLineCommand() {
+    return allowMultiLineCommand;
+  }
+
+  public void setAllowMultiLineCommand(boolean allowMultiLineCommand) {
+    this.allowMultiLineCommand = allowMultiLineCommand;
+  }
+
+  /**
+   * Use getNullString() to get the null string to be used.
+   * @return true if null representation should be an empty string
+   */
+  public boolean getNullEmptyString() {
+    return nullEmptyString;
+  }
+
+  public void setNullEmptyString(boolean nullStringEmpty) {
+    this.nullEmptyString = nullStringEmpty;
+  }
+
+  public String getNullString(){
+    return nullEmptyString ? "" : DEFAULT_NULL_STRING;
+  }
+
+  public Map<String, String> getHiveConfVariables() {
+    return hiveConfVariables;
+  }
+
+  public void setHiveConfVariables(Map<String, String> hiveConfVariables) {
+    this.hiveConfVariables = hiveConfVariables;
+  }
 }
+

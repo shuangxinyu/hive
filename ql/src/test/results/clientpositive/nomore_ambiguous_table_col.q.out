@@ -8,8 +8,10 @@ drop table ambiguous
 POSTHOOK: type: DROPTABLE
 PREHOOK: query: create table ambiguous (key string, value string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table ambiguous (key string, value string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@ambiguous
 PREHOOK: query: FROM src key
 INSERT OVERWRITE TABLE ambiguous SELECT key.key, key.value WHERE key.value < 'val_100'
@@ -31,5 +33,3 @@ POSTHOOK: query: drop table ambiguous
 POSTHOOK: type: DROPTABLE
 POSTHOOK: Input: default@ambiguous
 POSTHOOK: Output: default@ambiguous
-POSTHOOK: Lineage: ambiguous.key SIMPLE [(src)key.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: ambiguous.value SIMPLE [(src)key.FieldSchema(name:value, type:string, comment:default), ]

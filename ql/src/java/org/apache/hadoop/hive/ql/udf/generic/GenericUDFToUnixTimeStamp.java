@@ -26,12 +26,23 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentLengthException;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedExpressions;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFUnixTimeStampLong;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFUnixTimeStampString;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorConverters;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorConverters.Converter;
+import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.DateObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.StringObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.TimestampObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping;
 import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
 
 /**
  * deterministic version of UDFUnixTimeStamp. enforces argument
@@ -39,14 +50,16 @@ import org.apache.hadoop.io.LongWritable;
 @Description(name = "to_unix_timestamp",
     value = "_FUNC_(date[, pattern]) - Returns the UNIX timestamp",
     extended = "Converts the specified time to number of seconds since 1970-01-01.")
+@VectorizedExpressions({VectorUDFUnixTimeStampLong.class, VectorUDFUnixTimeStampString.class})
 public class GenericUDFToUnixTimeStamp extends GenericUDF {
 
-  private StringObjectInspector intputTextOI;
-  private TimestampObjectInspector inputTimestampOI;
-  private StringObjectInspector patternOI;
+  private transient DateObjectInspector inputDateOI;
+  private transient TimestampObjectInspector inputTimestampOI;
+  private transient Converter inputTextConverter;
+  private transient Converter patternConverter;
 
-  private String lasPattern = "yyyy-MM-dd HH:mm:ss";
-  private SimpleDateFormat formatter = new SimpleDateFormat(lasPattern);
+  private transient String lasPattern = "yyyy-MM-dd HH:mm:ss";
+  private transient final SimpleDateFormat formatter = new SimpleDateFormat(lasPattern);
 
   @Override
   public ObjectInspector initialize(ObjectInspector[] arguments) throws UDFArgumentException {
@@ -56,24 +69,44 @@ public class GenericUDFToUnixTimeStamp extends GenericUDF {
 
   protected void initializeInput(ObjectInspector[] arguments) throws UDFArgumentException {
     if (arguments.length < 1) {
-      throw new UDFArgumentLengthException("The function TO_UNIX_TIMESTAMP " +
+      throw new UDFArgumentLengthException("The function " + getName().toUpperCase() +
           "requires at least one argument");
     }
-
-    if (arguments[0] instanceof StringObjectInspector) {
-      intputTextOI = (StringObjectInspector) arguments[0];
-      if (arguments.length > 1) {
-        if (!(arguments[1] instanceof StringObjectInspector)) {
-          throw new UDFArgumentException(
-            "The time pattern for " + getName().toUpperCase() + " should be string type");
-        }
-        patternOI = (StringObjectInspector) arguments[1];
+    for (ObjectInspector argument : arguments) {
+      if (arguments[0].getCategory() != Category.PRIMITIVE) {
+        throw new UDFArgumentException(getName().toUpperCase() +
+            " only takes string/date/timestamp types, got " + argument.getTypeName());
       }
-    } else if (arguments[0] instanceof TimestampObjectInspector) {
-      inputTimestampOI = (TimestampObjectInspector) arguments[0];
-    } else {
-      throw new UDFArgumentException(
-          "The function " + getName().toUpperCase() + " takes only string or timestamp types");
+    }
+
+    PrimitiveObjectInspector arg1OI = (PrimitiveObjectInspector) arguments[0];
+    switch (arg1OI.getPrimitiveCategory()) {
+      case CHAR:
+      case VARCHAR:
+      case STRING:
+        inputTextConverter = ObjectInspectorConverters.getConverter(arg1OI,
+            PrimitiveObjectInspectorFactory.javaStringObjectInspector);
+        if (arguments.length > 1) {
+          PrimitiveObjectInspector arg2OI = (PrimitiveObjectInspector) arguments[1];
+          if (PrimitiveObjectInspectorUtils.getPrimitiveGrouping(arg2OI.getPrimitiveCategory())
+              != PrimitiveGrouping.STRING_GROUP) {
+            throw new UDFArgumentException(
+              "The time pattern for " + getName().toUpperCase() + " should be string type");
+          }
+          patternConverter = ObjectInspectorConverters.getConverter(arg2OI,
+              PrimitiveObjectInspectorFactory.javaStringObjectInspector);
+        }
+        break;
+
+      case DATE:
+        inputDateOI = (DateObjectInspector) arguments[0];
+        break;
+      case TIMESTAMP:
+        inputTimestampOI = (TimestampObjectInspector) arguments[0];
+        break;
+      default:
+        throw new UDFArgumentException(
+            "The function " + getName().toUpperCase() + " takes only string/date/timestamp types");
     }
   }
 
@@ -85,13 +118,20 @@ public class GenericUDFToUnixTimeStamp extends GenericUDF {
 
   @Override
   public Object evaluate(DeferredObject[] arguments) throws HiveException {
-    if (intputTextOI != null) {
-      String textVal = intputTextOI.getPrimitiveJavaObject(arguments[0].get());
+    if (arguments[0].get() == null) {
+      return null;
+    }
+
+    if (inputTextConverter != null) {
+      String textVal = (String) inputTextConverter.convert(arguments[0].get());
       if (textVal == null) {
         return null;
       }
-      if (patternOI != null) {
-        String patternVal = patternOI.getPrimitiveJavaObject(arguments[1].get());
+      if (patternConverter != null) {
+        if (arguments[1].get() == null) {
+          return null;
+        }
+        String patternVal = (String) patternConverter.convert(arguments[1].get());
         if (patternVal == null) {
           return null;
         }
@@ -106,6 +146,10 @@ public class GenericUDFToUnixTimeStamp extends GenericUDF {
       } catch (ParseException e) {
         return null;
       }
+    } else if (inputDateOI != null) {
+      retValue.set(inputDateOI.getPrimitiveWritableObject(arguments[0].get())
+                   .getTimeInSeconds());
+      return retValue;
     }
     Timestamp timestamp = inputTimestampOI.getPrimitiveJavaObject(arguments[0].get());
     retValue.set(timestamp.getTime() / 1000);

@@ -1,4 +1,6 @@
-PREHOOK: query: -- verify that we can actually read avro files
+PREHOOK: query: -- SORT_QUERY_RESULTS
+
+-- verify that we can actually read avro files
 CREATE TABLE doctors 
 ROW FORMAT
 SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
@@ -28,7 +30,10 @@ TBLPROPERTIES ('avro.schema.literal'='{
   ]
 }')
 PREHOOK: type: CREATETABLE
-POSTHOOK: query: -- verify that we can actually read avro files
+PREHOOK: Output: database:default
+POSTHOOK: query: -- SORT_QUERY_RESULTS
+
+-- verify that we can actually read avro files
 CREATE TABLE doctors 
 ROW FORMAT
 SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
@@ -58,31 +63,36 @@ TBLPROPERTIES ('avro.schema.literal'='{
   ]
 }')
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@doctors
 PREHOOK: query: DESCRIBE doctors
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@doctors
 POSTHOOK: query: DESCRIBE doctors
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
+POSTHOOK: Input: default@doctors
 number              	int                 	from deserializer   
 first_name          	string              	from deserializer   
 last_name           	string              	from deserializer   
-PREHOOK: query: LOAD DATA LOCAL INPATH '../data/files/doctors.avro' INTO TABLE doctors
+PREHOOK: query: LOAD DATA LOCAL INPATH '../../data/files/doctors.avro' INTO TABLE doctors
 PREHOOK: type: LOAD
+#### A masked pattern was here ####
 PREHOOK: Output: default@doctors
-POSTHOOK: query: LOAD DATA LOCAL INPATH '../data/files/doctors.avro' INTO TABLE doctors
+POSTHOOK: query: LOAD DATA LOCAL INPATH '../../data/files/doctors.avro' INTO TABLE doctors
 POSTHOOK: type: LOAD
+#### A masked pattern was here ####
 POSTHOOK: Output: default@doctors
-PREHOOK: query: SELECT * FROM doctors ORDER BY number
+PREHOOK: query: SELECT * FROM doctors
 PREHOOK: type: QUERY
 PREHOOK: Input: default@doctors
 #### A masked pattern was here ####
-POSTHOOK: query: SELECT * FROM doctors ORDER BY number
+POSTHOOK: query: SELECT * FROM doctors
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@doctors
 #### A masked pattern was here ####
 1	William	Hartnell
+10	David	Tennant
+11	Matt	Smith
 2	Patrick	Troughton
 3	Jon	Pertwee
 4	Tom	Baker
@@ -91,5 +101,3 @@ POSTHOOK: Input: default@doctors
 7	Sylvester	McCoy
 8	Paul	McGann
 9	Christopher	Eccleston
-10	David	Tennant
-11	Matt	Smith

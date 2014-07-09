@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.hive.serde2.objectinspector.primitive;
 
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.io.Text;
 
 /**
@@ -26,8 +27,8 @@ public class JavaStringObjectInspector extends
     AbstractPrimitiveJavaObjectInspector implements
     SettableStringObjectInspector {
 
-  JavaStringObjectInspector() {
-    super(PrimitiveObjectInspectorUtils.stringTypeEntry);
+  protected JavaStringObjectInspector() {
+    super(TypeInfoFactory.stringTypeInfo);
   }
 
   @Override

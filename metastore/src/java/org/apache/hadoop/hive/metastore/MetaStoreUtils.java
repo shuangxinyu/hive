@@ -37,19 +37,27 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.hive.common.JavaUtils;
+import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.metastore.api.InvalidOperationException;
 import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.SerDeInfo;
 import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.metastore.api.hive_metastoreConstants;
+import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.Deserializer;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeUtils;
@@ -61,8 +69,9 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.hive.thrift.HadoopThriftAuthBridge;
-import org.apache.hadoop.util.StringUtils;
+import org.apache.hadoop.util.ReflectionUtils;
 
 public class MetaStoreUtils {
 
@@ -72,21 +81,6 @@ public class MetaStoreUtils {
   public static final String DEFAULT_DATABASE_COMMENT = "Default Hive database";
 
   public static final String DATABASE_WAREHOUSE_SUFFIX = ".db";
-
-  /**
-   * printStackTrace
-   *
-   * Helper function to print an exception stack trace to the log and not stderr
-   *
-   * @param e
-   *          the exception
-   *
-   */
-  static public void printStackTrace(Exception e) {
-    for (StackTraceElement s : e.getStackTrace()) {
-      LOG.error(s);
-    }
-  }
 
   public static Table createColumnsetSchema(String name, List<String> columns,
       List<String> partCols, Configuration conf) throws MetaException {
@@ -152,37 +146,171 @@ public class MetaStoreUtils {
   }
 
   /**
-   * getDeserializer
-   *
-   * Get the Deserializer for a table given its name and properties.
-   *
-   * @param conf
-   *          hadoop config
-   * @param schema
-   *          the properties to use to instantiate the deserializer
-   * @return
-   *   Returns instantiated deserializer by looking up class name of deserializer stored in passed
-   *   in properties. Also, initializes the deserializer with schema stored in passed in properties.
-   * @exception MetaException
-   *              if any problems instantiating the Deserializer
-   *
-   *              todo - this should move somewhere into serde.jar
-   *
+   * @param partParams
+   * @return True if the passed Parameters Map contains values for all "Fast Stats".
    */
-  static public Deserializer getDeserializer(Configuration conf,
-      Properties schema) throws MetaException {
-    String lib = schema
-        .getProperty(org.apache.hadoop.hive.serde.serdeConstants.SERIALIZATION_LIB);
-    try {
-      Deserializer deserializer = SerDeUtils.lookupDeserializer(lib);
-      (deserializer).initialize(conf, schema);
-      return deserializer;
-    } catch (Exception e) {
-      LOG.error("error in initSerDe: " + e.getClass().getName() + " "
-          + e.getMessage());
-      MetaStoreUtils.printStackTrace(e);
-      throw new MetaException(e.getClass().getName() + " " + e.getMessage());
+  public static boolean containsAllFastStats(Map<String, String> partParams) {
+    for (String stat : StatsSetupConst.fastStats) {
+      if (!partParams.containsKey(stat)) {
+        return false;
+      }
     }
+    return true;
+  }
+
+  public static boolean updateUnpartitionedTableStatsFast(Database db, Table tbl, Warehouse wh,
+      boolean madeDir) throws MetaException {
+    return updateUnpartitionedTableStatsFast(db, tbl, wh, madeDir, false);
+  }
+
+  /**
+   * Updates the numFiles and totalSize parameters for the passed unpartitioned Table by querying
+   * the warehouse if the passed Table does not already have values for these parameters.
+   * @param db
+   * @param tbl
+   * @param wh
+   * @param newDir if true, the directory was just created and can be assumed to be empty
+   * @param forceRecompute Recompute stats even if the passed Table already has
+   * these parameters set
+   * @return true if the stats were updated, false otherwise
+   */
+  public static boolean updateUnpartitionedTableStatsFast(Database db, Table tbl, Warehouse wh,
+      boolean newDir, boolean forceRecompute) throws MetaException {
+    Map<String,String> params = tbl.getParameters();
+    boolean updated = false;
+    if (forceRecompute ||
+        params == null ||
+        !containsAllFastStats(params)) {
+      if (params == null) {
+        params = new HashMap<String,String>();
+      }
+      if (!newDir) {
+        // The table location already exists and may contain data.
+        // Let's try to populate those stats that don't require full scan.
+        LOG.info("Updating table stats fast for " + tbl.getTableName());
+        FileStatus[] fileStatus = wh.getFileStatusesForUnpartitionedTable(db, tbl);
+        populateQuickStats(fileStatus, params);
+        LOG.info("Updated size of table " + tbl.getTableName() +" to "+ params.get(StatsSetupConst.TOTAL_SIZE));
+        if(!params.containsKey(StatsSetupConst.STATS_GENERATED_VIA_STATS_TASK)) {
+          // invalidate stats requiring scan since this is a regular ddl alter case
+          for (String stat : StatsSetupConst.statsRequireCompute) {
+            params.put(stat, "-1");
+          }
+          params.put(StatsSetupConst.COLUMN_STATS_ACCURATE, StatsSetupConst.FALSE);
+        } else {
+          params.remove(StatsSetupConst.STATS_GENERATED_VIA_STATS_TASK);
+          params.put(StatsSetupConst.COLUMN_STATS_ACCURATE, StatsSetupConst.TRUE);
+        }
+      }
+      tbl.setParameters(params);
+      updated = true;
+    }
+    return updated;
+  }
+
+  public static void populateQuickStats(FileStatus[] fileStatus, Map<String, String> params) {
+    int numFiles = 0;
+    long tableSize = 0L;
+    for (FileStatus status : fileStatus) {
+      // don't take directories into account for quick stats
+      if (!status.isDir()) {
+        tableSize += status.getLen();
+        numFiles += 1;
+      }
+    }
+    params.put(StatsSetupConst.NUM_FILES, Integer.toString(numFiles));
+    params.put(StatsSetupConst.TOTAL_SIZE, Long.toString(tableSize));
+  }
+
+  // check if stats need to be (re)calculated
+  public static boolean requireCalStats(Configuration hiveConf, Partition oldPart,
+    Partition newPart, Table tbl) {
+
+    if (MetaStoreUtils.isView(tbl)) {
+      return false;
+    }
+
+    if  (oldPart == null && newPart == null) {
+      return true;
+    }
+
+    // requires to calculate stats if new partition doesn't have it
+    if ((newPart == null) || (newPart.getParameters() == null)
+        || !containsAllFastStats(newPart.getParameters())) {
+      return true;
+    }
+
+    if(newPart.getParameters().containsKey(StatsSetupConst.STATS_GENERATED_VIA_STATS_TASK)) {
+      return true;
+    }
+
+    // requires to calculate stats if new and old have different fast stats
+    if ((oldPart != null) && (oldPart.getParameters() != null)) {
+      for (String stat : StatsSetupConst.fastStats) {
+        if (oldPart.getParameters().containsKey(stat)) {
+          Long oldStat = Long.parseLong(oldPart.getParameters().get(stat));
+          Long newStat = Long.parseLong(newPart.getParameters().get(stat));
+          if (oldStat != newStat) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  public static boolean updatePartitionStatsFast(Partition part, Warehouse wh)
+      throws MetaException {
+    return updatePartitionStatsFast(part, wh, false, false);
+  }
+
+  public static boolean updatePartitionStatsFast(Partition part, Warehouse wh, boolean madeDir)
+      throws MetaException {
+    return updatePartitionStatsFast(part, wh, madeDir, false);
+  }
+
+  /**
+   * Updates the numFiles and totalSize parameters for the passed Partition by querying
+   *  the warehouse if the passed Partition does not already have values for these parameters.
+   * @param part
+   * @param wh
+   * @param madeDir if true, the directory was just created and can be assumed to be empty
+   * @param forceRecompute Recompute stats even if the passed Partition already has
+   * these parameters set
+   * @return true if the stats were updated, false otherwise
+   */
+  public static boolean updatePartitionStatsFast(Partition part, Warehouse wh,
+      boolean madeDir, boolean forceRecompute) throws MetaException {
+    Map<String,String> params = part.getParameters();
+    boolean updated = false;
+    if (forceRecompute ||
+        params == null ||
+        !containsAllFastStats(params)) {
+      if (params == null) {
+        params = new HashMap<String,String>();
+      }
+      if (!madeDir) {
+        // The partitition location already existed and may contain data. Lets try to
+        // populate those statistics that don't require a full scan of the data.
+        LOG.warn("Updating partition stats fast for: " + part.getTableName());
+        FileStatus[] fileStatus = wh.getFileStatusesForSD(part.getSd());
+        populateQuickStats(fileStatus, params);
+        LOG.warn("Updated size to " + params.get(StatsSetupConst.TOTAL_SIZE));
+        if(!params.containsKey(StatsSetupConst.STATS_GENERATED_VIA_STATS_TASK)) {
+          // invalidate stats requiring scan since this is a regular ddl alter case
+          for (String stat : StatsSetupConst.statsRequireCompute) {
+            params.put(stat, "-1");
+          }
+          params.put(StatsSetupConst.COLUMN_STATS_ACCURATE, StatsSetupConst.FALSE);
+        } else {
+          params.remove(StatsSetupConst.STATS_GENERATED_VIA_STATS_TASK);
+          params.put(StatsSetupConst.COLUMN_STATS_ACCURATE, StatsSetupConst.TRUE);
+        }
+      }
+      part.setParameters(params);
+      updated = true;
+    }
+    return updated;
   }
 
   /**
@@ -211,15 +339,15 @@ public class MetaStoreUtils {
       return null;
     }
     try {
-      Deserializer deserializer = SerDeUtils.lookupDeserializer(lib);
-      deserializer.initialize(conf, MetaStoreUtils.getTableMetadata(table));
+      Deserializer deserializer = ReflectionUtils.newInstance(conf.getClassByName(lib).
+        asSubclass(Deserializer.class), conf);
+      SerDeUtils.initializeSerDe(deserializer, conf, MetaStoreUtils.getTableMetadata(table), null);
       return deserializer;
     } catch (RuntimeException e) {
       throw e;
     } catch (Exception e) {
       LOG.error("error in initSerDe: " + e.getClass().getName() + " "
-          + e.getMessage());
-      MetaStoreUtils.printStackTrace(e);
+          + e.getMessage(), e);
       throw new MetaException(e.getClass().getName() + " " + e.getMessage());
     }
   }
@@ -247,15 +375,16 @@ public class MetaStoreUtils {
       org.apache.hadoop.hive.metastore.api.Table table) throws MetaException {
     String lib = part.getSd().getSerdeInfo().getSerializationLib();
     try {
-      Deserializer deserializer = SerDeUtils.lookupDeserializer(lib);
-      deserializer.initialize(conf, MetaStoreUtils.getPartitionMetadata(part, table));
+      Deserializer deserializer = ReflectionUtils.newInstance(conf.getClassByName(lib).
+        asSubclass(Deserializer.class), conf);
+      SerDeUtils.initializeSerDe(deserializer, conf, MetaStoreUtils.getTableMetadata(table),
+                                 MetaStoreUtils.getPartitionMetadata(part, table));
       return deserializer;
     } catch (RuntimeException e) {
       throw e;
     } catch (Exception e) {
       LOG.error("error in initSerDe: " + e.getClass().getName() + " "
-          + e.getMessage());
-      MetaStoreUtils.printStackTrace(e);
+          + e.getMessage(), e);
       throw new MetaException(e.getClass().getName() + " " + e.getMessage());
     }
   }
@@ -308,6 +437,28 @@ public class MetaStoreUtils {
   }
 
   /**
+   * Given a list of partition columns and a partial mapping from
+   * some partition columns to values the function returns the values
+   * for the column.
+   * @param partCols the list of table partition columns
+   * @param partSpec the partial mapping from partition column to values
+   * @return list of values of for given partition columns, any missing
+   *         values in partSpec is replaced by an empty string
+   */
+  public static List<String> getPvals(List<FieldSchema> partCols,
+      Map<String, String> partSpec) {
+    List<String> pvals = new ArrayList<String>();
+    for (FieldSchema field : partCols) {
+      String val = partSpec.get(field.getName());
+      if (val == null) {
+        val = "";
+      }
+      pvals.add(val);
+    }
+    return pvals;
+  }
+
+  /**
    * validateName
    *
    * Checks the name conforms to our standars which are: "[a-zA-z_0-9]+". checks
@@ -328,16 +479,69 @@ public class MetaStoreUtils {
     return false;
   }
 
-  static public boolean validateTblColumns(List<FieldSchema> cols) {
+  /*
+   * At the Metadata level there are no restrictions on Column Names.
+   */
+  public static final boolean validateColumnName(String name) {
+    return true;
+  }
+
+  static public String validateTblColumns(List<FieldSchema> cols) {
     for (FieldSchema fieldSchema : cols) {
-      if (!validateName(fieldSchema.getName())) {
-        return false;
+      if (!validateColumnName(fieldSchema.getName())) {
+        return "name: " + fieldSchema.getName();
       }
       if (!validateColumnType(fieldSchema.getType())) {
-        return false;
+        return "type: " + fieldSchema.getType();
       }
     }
-    return true;
+    return null;
+  }
+
+  static void throwExceptionIfIncompatibleColTypeChange(
+      List<FieldSchema> oldCols, List<FieldSchema> newCols)
+      throws InvalidOperationException {
+
+    List<String> incompatibleCols = new ArrayList<String>();
+    int maxCols = Math.min(oldCols.size(), newCols.size());
+    for (int i = 0; i < maxCols; i++) {
+      if (!areColTypesCompatible(oldCols.get(i).getType(), newCols.get(i).getType())) {
+        incompatibleCols.add(newCols.get(i).getName());
+      }
+    }
+    if (!incompatibleCols.isEmpty()) {
+      throw new InvalidOperationException(
+          "The following columns have types incompatible with the existing " +
+          "columns in their respective positions :\n" +
+          StringUtils.join(incompatibleCols, ',')
+        );
+    }
+  }
+
+  /**
+   * @return true if oldType and newType are compatible.
+   * Two types are compatible if we have internal functions to cast one to another.
+   */
+  static private boolean areColTypesCompatible(String oldType, String newType) {
+    if (oldType.equals(newType)) {
+      return true;
+    }
+
+    /*
+     * RCFile default serde (ColumnarSerde) serializes the values in such a way that the
+     * datatypes can be converted from string to any type. The map is also serialized as
+     * a string, which can be read as a string as well. However, with any binary
+     * serialization, this is not true.
+     *
+     * Primitive types like INT, STRING, BIGINT, etc are compatible with each other and are
+     * not blocked.
+     */
+    if(serdeConstants.PrimitiveTypes.contains(oldType.toLowerCase()) &&
+        serdeConstants.PrimitiveTypes.contains(newType.toLowerCase())) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -364,22 +568,22 @@ public class MetaStoreUtils {
     return true;
   }
 
-  public static  boolean validateSkewedColNames(List<String> cols) {
+  public static String validateSkewedColNames(List<String> cols) {
     if (null == cols) {
-      return true;
+      return null;
     }
     for (String col : cols) {
-      if (!validateName(col)) {
-        return false;
+      if (!validateColumnName(col)) {
+        return col;
       }
     }
-    return true;
+    return null;
   }
 
-  public static boolean validateSkewedColNamesSubsetCol(List<String> skewedColNames,
+  public static String validateSkewedColNamesSubsetCol(List<String> skewedColNames,
       List<FieldSchema> cols) {
     if (null == skewedColNames) {
-      return true;
+      return null;
     }
     List<String> colNames = new ArrayList<String>();
     for (FieldSchema fieldSchema : cols) {
@@ -389,7 +593,10 @@ public class MetaStoreUtils {
     List<String> copySkewedColNames = new ArrayList<String>(skewedColNames);
     // remove valid columns
     copySkewedColNames.removeAll(colNames);
-    return (copySkewedColNames.size() > 0) ? false : true;
+    if (copySkewedColNames.isEmpty()) {
+      return null;
+    }
+    return copySkewedColNames.toString();
   }
 
   public static String getListType(String t) {
@@ -451,7 +658,7 @@ public class MetaStoreUtils {
   static Set<String> hiveThriftTypeMap; //for validation
   static {
     hiveThriftTypeMap = new HashSet<String>();
-    hiveThriftTypeMap.addAll(org.apache.hadoop.hive.serde.serdeConstants.PrimitiveTypes);
+    hiveThriftTypeMap.addAll(serdeConstants.PrimitiveTypes);
     hiveThriftTypeMap.addAll(org.apache.hadoop.hive.serde.serdeConstants.CollectionTypes);
     hiveThriftTypeMap.add(org.apache.hadoop.hive.serde.serdeConstants.UNION_TYPE_NAME);
     hiveThriftTypeMap.add(org.apache.hadoop.hive.serde.serdeConstants.STRUCT_TYPE_NAME);
@@ -726,14 +933,17 @@ public class MetaStoreUtils {
     }
     StringBuilder colNameBuf = new StringBuilder();
     StringBuilder colTypeBuf = new StringBuilder();
+    StringBuilder colComment = new StringBuilder();
     boolean first = true;
     for (FieldSchema col : tblsd.getCols()) {
       if (!first) {
         colNameBuf.append(",");
         colTypeBuf.append(":");
+        colComment.append('\0');
       }
       colNameBuf.append(col.getName());
       colTypeBuf.append(col.getType());
+      colComment.append((null != col.getComment()) ? col.getComment() : "");
       first = false;
     }
     String colNames = colNameBuf.toString();
@@ -744,6 +954,7 @@ public class MetaStoreUtils {
     schema.setProperty(
         org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_COLUMN_TYPES,
         colTypes);
+    schema.setProperty("columns.comments", colComment.toString());
     if (sd.getCols() != null) {
       schema.setProperty(
           org.apache.hadoop.hive.serde.serdeConstants.SERIALIZATION_DDL,
@@ -752,11 +963,16 @@ public class MetaStoreUtils {
 
     String partString = "";
     String partStringSep = "";
+    String partTypesString = "";
+    String partTypesStringSep = "";
     for (FieldSchema partKey : partitionKeys) {
       partString = partString.concat(partStringSep);
       partString = partString.concat(partKey.getName());
+      partTypesString = partTypesString.concat(partTypesStringSep);
+      partTypesString = partTypesString.concat(partKey.getType());      
       if (partStringSep.length() == 0) {
         partStringSep = "/";
+        partTypesStringSep = ":";
       }
     }
     if (partString.length() > 0) {
@@ -764,6 +980,10 @@ public class MetaStoreUtils {
           .setProperty(
               org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_PARTITION_COLUMNS,
               partString);
+      schema
+      .setProperty(
+          org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_PARTITION_COLUMN_TYPES,
+          partTypesString);      
     }
 
     if (parameters != null) {
@@ -881,12 +1101,11 @@ public class MetaStoreUtils {
    * @throws MetaException
    */
   static void logAndThrowMetaException(Exception e) throws MetaException {
-    LOG
-        .error("Got exception: " + e.getClass().getName() + " "
-            + e.getMessage());
-    LOG.error(StringUtils.stringifyException(e));
-    throw new MetaException("Got exception: " + e.getClass().getName() + " "
-        + e.getMessage());
+    String exInfo = "Got exception: " + e.getClass().getName() + " "
+        + e.getMessage();
+    LOG.error(exInfo, e);
+    LOG.error("Converting exception to MetaException");
+    throw new MetaException(exInfo);
   }
 
   /**
@@ -950,7 +1169,7 @@ public class MetaStoreUtils {
 
   private static final String FROM_SERIALIZER = "from deserializer";
   private static String determineFieldComment(String comment) {
-    return (comment == null || comment.isEmpty()) ? FROM_SERIALIZER : comment;
+    return (comment == null) ? FROM_SERIALIZER : comment;
   }
 
   /**
@@ -981,6 +1200,29 @@ public class MetaStoreUtils {
     return "TRUE".equalsIgnoreCase(params.get("EXTERNAL"));
   }
 
+  /**
+   * Determines whether a table is an immutable table.
+   * Immutable tables are write-once/replace, and do not support append. Partitioned
+   * immutable tables do support additions by way of creation of new partitions, but
+   * do not allow the partitions themselves to be appended to. "INSERT INTO" will not
+   * work for Immutable tables.
+   *
+   * @param table table of interest
+   *
+   * @return true if immutable
+   */
+  public static boolean isImmutableTable(Table table) {
+    if (table == null){
+      return false;
+    }
+    Map<String, String> params = table.getParameters();
+    if (params == null) {
+      return false;
+    }
+
+    return "TRUE".equalsIgnoreCase(params.get(hive_metastoreConstants.IS_IMMUTABLE));
+  }
+
   public static boolean isArchived(
       org.apache.hadoop.hive.metastore.api.Partition part) {
     Map<String, String> params = part.getParameters();
@@ -1006,6 +1248,36 @@ public class MetaStoreUtils {
       return false;
     }
     return (table.getParameters().get(hive_metastoreConstants.META_TABLE_STORAGE) != null);
+  }
+
+  /**
+   * Filter that filters out hidden files
+   */
+  private static final PathFilter hiddenFileFilter = new PathFilter() {
+    @Override
+    public boolean accept(Path p) {
+      String name = p.getName();
+      return !name.startsWith("_") && !name.startsWith(".");
+    }
+  };
+
+  /**
+   * Utility method that determines if a specified directory already has
+   * contents (non-hidden files) or not - useful to determine if an
+   * immutable table already has contents, for example.
+   *
+   * @param path
+   * @throws IOException
+   */
+  public static boolean isDirEmpty(FileSystem fs, Path path) throws IOException {
+
+    if (fs.exists(path)) {
+      FileStatus[] status = fs.globStatus(new Path(path, "*"), hiddenFileFilter);
+      if (status.length > 0) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -1060,6 +1332,13 @@ public class MetaStoreUtils {
       }
     }
     return filter.toString();
+  }
+
+  public static boolean isView(Table table) {
+    if (table == null) {
+      return false;
+    }
+    return TableType.VIRTUAL_VIEW.toString().equals(table.getTableType());
   }
 
   /**
@@ -1158,6 +1437,53 @@ public class MetaStoreUtils {
     return getPartitionValWithInvalidCharacter(partVals, partitionValidationPattern) == null;
   }
 
+  /**
+   * @param schema1: The first schema to be compared
+   * @param schema2: The second schema to be compared
+   * @return true if the two schemas are the same else false
+   *         for comparing a field we ignore the comment it has
+   */
+  public static boolean compareFieldColumns(List<FieldSchema> schema1, List<FieldSchema> schema2) {
+    if (schema1.size() != schema2.size()) {
+      return false;
+    }
+    for (int i = 0; i < schema1.size(); i++) {
+      FieldSchema f1 = schema1.get(i);
+      FieldSchema f2 = schema2.get(i);
+      // The default equals provided by thrift compares the comments too for
+      // equality, thus we need to compare the relevant fields here.
+      if (f1.getName() == null) {
+        if (f2.getName() != null) {
+          return false;
+        }
+      } else if (!f1.getName().equals(f2.getName())) {
+        return false;
+      }
+      if (f1.getType() == null) {
+        if (f2.getType() != null) {
+          return false;
+        }
+      } else if (!f1.getType().equals(f2.getType())) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Read and return the meta store Sasl configuration. Currently it uses the default
+   * Hadoop SASL configuration and can be configured using "hadoop.rpc.protection"
+   * HADOOP-10211, made a backward incompatible change due to which this call doesn't
+   * work with Hadoop 2.4.0 and later.
+   * @param conf
+   * @return The SASL configuration
+   */
+  public static Map<String, String> getMetaStoreSaslProperties(HiveConf conf) {
+    // As of now Hive Meta Store uses the same configuration as Hadoop SASL configuration
+    return ShimLoader.getHadoopThriftAuthBridge().getHadoopSaslProperties(conf);
+  }
+
+
   private static String getPartitionValWithInvalidCharacter(List<String> partVals,
       Pattern partitionValidationPattern) {
     if (partitionValidationPattern == null) {
@@ -1173,4 +1499,43 @@ public class MetaStoreUtils {
     return null;
   }
 
+  public static ProtectMode getProtectMode(Partition partition) {
+    return getProtectMode(partition.getParameters());
+  }
+
+  public static ProtectMode getProtectMode(Table table) {
+    return getProtectMode(table.getParameters());
+  }
+
+  private static ProtectMode getProtectMode(Map<String, String> parameters) {
+    if (parameters == null) {
+      return null;
+    }
+
+    if (!parameters.containsKey(ProtectMode.PARAMETER_NAME)) {
+      return new ProtectMode();
+    } else {
+      return ProtectMode.getProtectModeFromString(parameters.get(ProtectMode.PARAMETER_NAME));
+    }
+  }
+
+  public static boolean canDropPartition(Table table, Partition partition) {
+    ProtectMode mode = getProtectMode(partition);
+    ProtectMode parentMode = getProtectMode(table);
+    return (!mode.noDrop && !mode.offline && !mode.readOnly && !parentMode.noDropCascade);
+  }
+
+  public static String ARCHIVING_LEVEL = "archiving_level";
+  public static int getArchivingLevel(Partition part) throws MetaException {
+    if (!isArchived(part)) {
+      throw new MetaException("Getting level of unarchived partition");
+    }
+
+    String lv = part.getParameters().get(ARCHIVING_LEVEL);
+    if (lv != null) {
+      return Integer.parseInt(lv);
+    } else {  // partitions archived before introducing multiple archiving
+      return part.getValues().size();
+    }
+  }
 }

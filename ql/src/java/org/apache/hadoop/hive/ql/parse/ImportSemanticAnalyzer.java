@@ -18,23 +18,12 @@
 
 package org.apache.hadoop.hive.ql.parse;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-
 import org.antlr.runtime.tree.Tree;
 import org.apache.commons.lang.ObjectUtils;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.Warehouse;
@@ -47,22 +36,27 @@ import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
+import org.apache.hadoop.hive.ql.io.HiveFileFormatUtils;
+import org.apache.hadoop.hive.ql.io.HiveOutputFormat;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.InvalidTableException;
 import org.apache.hadoop.hive.ql.metadata.Table;
-import org.apache.hadoop.hive.ql.plan.AddPartitionDesc;
-import org.apache.hadoop.hive.ql.plan.CopyWork;
-import org.apache.hadoop.hive.ql.plan.CreateTableDesc;
-import org.apache.hadoop.hive.ql.plan.DDLWork;
-import org.apache.hadoop.hive.ql.plan.LoadTableDesc;
-import org.apache.hadoop.hive.ql.plan.MoveWork;
+import org.apache.hadoop.hive.ql.plan.*;
+import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.serde.serdeConstants;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.*;
 
 /**
  * ImportSemanticAnalyzer.
  *
  */
 public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
+
+  public static final String METADATA_NAME="_metadata";
 
   public ImportSemanticAnalyzer(HiveConf conf) throws SemanticException {
     super(conf);
@@ -89,10 +83,10 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
       Path fromPath = new Path(fromURI.getScheme(), fromURI.getAuthority(),
           fromURI.getPath());
       try {
-        Path metadataPath = new Path(fromPath, "_metadata");
+        Path metadataPath = new Path(fromPath, METADATA_NAME);
         Map.Entry<org.apache.hadoop.hive.metastore.api.Table,
         List<Partition>> rv =  EximUtil.readMetaData(fs, metadataPath);
-        dbname = db.getCurrentDatabase();
+        dbname = SessionState.get().getCurrentDatabase();
         org.apache.hadoop.hive.metastore.api.Table table = rv.getKey();
         tblDesc =  new CreateTableDesc(
             table.getTableName(),
@@ -126,9 +120,11 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
         }
         List<Partition> partitions = rv.getValue();
         for (Partition partition : partitions) {
-          AddPartitionDesc partDesc = new AddPartitionDesc(dbname, tblDesc.getTableName(),
+          // TODO: this should not create AddPartitionDesc per partition
+          AddPartitionDesc partsDesc = new AddPartitionDesc(dbname, tblDesc.getTableName(),
               EximUtil.makePartSpec(tblDesc.getPartCols(), partition.getValues()),
               partition.getSd().getLocation(), partition.getParameters());
+          AddPartitionDesc.OnePartitionDesc partDesc = partsDesc.getPartition(0);
           partDesc.setInputFormat(partition.getSd().getInputFormat());
           partDesc.setOutputFormat(partition.getSd().getOutputFormat());
           partDesc.setNumBuckets(partition.getSd().getNumBuckets());
@@ -139,7 +135,7 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
           partDesc.setSortCols(partition.getSd().getSortCols());
           partDesc.setLocation(new Path(fromPath,
               Warehouse.makePartName(tblDesc.getPartCols(), partition.getValues())).toString());
-          partitionDescs.add(partDesc);
+          partitionDescs.add(partsDesc);
         }
       } catch (IOException e) {
         throw new SemanticException(ErrorMsg.INVALID_PATH.getMsg(), e);
@@ -185,7 +181,7 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
             for (Iterator<AddPartitionDesc> partnIter = partitionDescs
                   .listIterator(); partnIter.hasNext();) {
               AddPartitionDesc addPartitionDesc = partnIter.next();
-              if (!found && addPartitionDesc.getPartSpec().equals(partSpec)) {
+              if (!found && addPartitionDesc.getPartition(0).getPartSpec().equals(partSpec)) {
                 found = true;
               } else {
                 partnIter.remove();
@@ -218,12 +214,12 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
         if (table.isPartitioned()) {
           LOG.debug("table partitioned");
           for (AddPartitionDesc addPartitionDesc : partitionDescs) {
-            if (db.getPartition(table, addPartitionDesc.getPartSpec(), false) == null) {
+            Map<String, String> partSpec = addPartitionDesc.getPartition(0).getPartSpec();
+            if (db.getPartition(table, partSpec, false) == null) {
               rootTasks.add(addSinglePartition(fromURI, fs, tblDesc, table, wh, addPartitionDesc));
             } else {
               throw new SemanticException(
-                  ErrorMsg.PARTITION_EXISTS
-                      .getMsg(partSpecToString(addPartitionDesc.getPartSpec())));
+                  ErrorMsg.PARTITION_EXISTS.getMsg(partSpecToString(partSpec)));
             }
           }
         } else {
@@ -232,15 +228,17 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
               .toString()));
           loadTable(fromURI, table);
         }
-        outputs.add(new WriteEntity(table));
+        // Set this to read because we can't overwrite any existing partitions
+        outputs.add(new WriteEntity(table, WriteEntity.WriteType.DDL_NO_LOCK));
       } catch (InvalidTableException e) {
         LOG.debug("table " + tblDesc.getTableName() + " does not exist");
 
         Task<?> t = TaskFactory.get(new DDLWork(getInputs(), getOutputs(),
             tblDesc), conf);
         Table table = new Table(dbname, tblDesc.getTableName());
+        String currentDb = SessionState.get().getCurrentDatabase();
         conf.set("import.destination.dir",
-            wh.getTablePath(db.getDatabase(db.getCurrentDatabase()),
+            wh.getTablePath(db.getDatabaseCurrent(),
                 tblDesc.getTableName()).toString());
         if ((tblDesc.getPartCols() != null) && (tblDesc.getPartCols().size() != 0)) {
           for (AddPartitionDesc addPartitionDesc : partitionDescs) {
@@ -258,7 +256,7 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
             if (tblDesc.getLocation() != null) {
               tablePath = new Path(tblDesc.getLocation());
             } else {
-              tablePath = wh.getTablePath(db.getDatabase(db.getCurrentDatabase()), tblDesc.getTableName());
+              tablePath = wh.getTablePath(db.getDatabaseCurrent(), tblDesc.getTableName());
             }
             checkTargetLocationEmpty(fs, tablePath);
             t.addDependentTask(loadTable(fromURI, table));
@@ -277,11 +275,10 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
 
   private Task<?> loadTable(URI fromURI, Table table) {
     Path dataPath = new Path(fromURI.toString(), "data");
-    String tmpURI = ctx.getExternalTmpFileURI(fromURI);
-    Task<?> copyTask = TaskFactory.get(new CopyWork(dataPath.toString(),
-        tmpURI, false), conf);
-    LoadTableDesc loadTableWork = new LoadTableDesc(tmpURI.toString(),
-        ctx.getExternalTmpFileURI(fromURI),
+    Path tmpPath = ctx.getExternalTmpPath(fromURI);
+    Task<?> copyTask = TaskFactory.get(new CopyWork(dataPath,
+       tmpPath, false), conf);
+    LoadTableDesc loadTableWork = new LoadTableDesc(tmpPath,
         Utilities.getTableDesc(table), new TreeMap<String, String>(),
         false);
     Task<?> loadTableTask = TaskFactory.get(new MoveWork(getInputs(),
@@ -294,43 +291,43 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
   private Task<?> addSinglePartition(URI fromURI, FileSystem fs, CreateTableDesc tblDesc,
       Table table, Warehouse wh,
       AddPartitionDesc addPartitionDesc) throws MetaException, IOException, HiveException {
+    AddPartitionDesc.OnePartitionDesc partSpec = addPartitionDesc.getPartition(0);
     if (tblDesc.isExternal() && tblDesc.getLocation() == null) {
       LOG.debug("Importing in-place: adding AddPart for partition "
-          + partSpecToString(addPartitionDesc.getPartSpec()));
+          + partSpecToString(partSpec.getPartSpec()));
       // addPartitionDesc already has the right partition location
       Task<?> addPartTask = TaskFactory.get(new DDLWork(getInputs(),
           getOutputs(), addPartitionDesc), conf);
       return addPartTask;
     } else {
-      String srcLocation = addPartitionDesc.getLocation();
+      String srcLocation = partSpec.getLocation();
       Path tgtPath = null;
       if (tblDesc.getLocation() == null) {
         if (table.getDataLocation() != null) {
           tgtPath = new Path(table.getDataLocation().toString(),
-              Warehouse.makePartPath(addPartitionDesc.getPartSpec()));
+              Warehouse.makePartPath(partSpec.getPartSpec()));
         } else {
           tgtPath = new Path(wh.getTablePath(
-              db.getDatabase(db.getCurrentDatabase()), tblDesc.getTableName()),
-              Warehouse.makePartPath(addPartitionDesc.getPartSpec()));
+              db.getDatabaseCurrent(), tblDesc.getTableName()),
+              Warehouse.makePartPath(partSpec.getPartSpec()));
         }
       } else {
         tgtPath = new Path(tblDesc.getLocation(),
-            Warehouse.makePartPath(addPartitionDesc.getPartSpec()));
+            Warehouse.makePartPath(partSpec.getPartSpec()));
       }
       checkTargetLocationEmpty(fs, tgtPath);
-      addPartitionDesc.setLocation(tgtPath.toString());
+      partSpec.setLocation(tgtPath.toString());
       LOG.debug("adding dependent CopyWork/AddPart/MoveWork for partition "
-          + partSpecToString(addPartitionDesc.getPartSpec())
+          + partSpecToString(partSpec.getPartSpec())
           + " with source location: " + srcLocation);
-      String tmpURI = ctx.getExternalTmpFileURI(fromURI);
-      Task<?> copyTask = TaskFactory.get(new CopyWork(srcLocation,
-          tmpURI, false), conf);
+      Path tmpPath = ctx.getExternalTmpPath(fromURI);
+      Task<?> copyTask = TaskFactory.get(new CopyWork(new Path(srcLocation),
+          tmpPath, false), conf);
       Task<?> addPartTask = TaskFactory.get(new DDLWork(getInputs(),
           getOutputs(), addPartitionDesc), conf);
-      LoadTableDesc loadTableWork = new LoadTableDesc(tmpURI,
-          ctx.getExternalTmpFileURI(fromURI),
+      LoadTableDesc loadTableWork = new LoadTableDesc(tmpPath,
           Utilities.getTableDesc(table),
-          addPartitionDesc.getPartSpec(), true);
+          partSpec.getPartSpec(), true);
       loadTableWork.setInheritTableSpecs(false);
       Task<?> loadPartTask = TaskFactory.get(new MoveWork(
           getInputs(), getOutputs(), loadTableWork, null, false),
@@ -397,7 +394,7 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
         if (tableDesc.getLocation() != null) { // IMPORT statement specified
                                                // location
           if (!table.getDataLocation()
-              .equals(new URI(tableDesc.getLocation()))) {
+              .equals(new Path(tableDesc.getLocation()))) {
             throw new SemanticException(
                 ErrorMsg.INCOMPATIBLE_SCHEMA.getMsg(" Location does not match"));
           }
@@ -443,6 +440,22 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
       String importedifc = tableDesc.getInputFormat();
       String existingofc = table.getOutputFormatClass().getName();
       String importedofc = tableDesc.getOutputFormat();
+      /*
+       * substitute OutputFormat name based on HiveFileFormatUtils.outputFormatSubstituteMap
+       */
+      try {
+        Class<?> origin = Class.forName(importedofc, true, JavaUtils.getClassLoader());
+        Class<? extends HiveOutputFormat> replaced = HiveFileFormatUtils
+            .getOutputFormatSubstitute(origin,false);
+        if (replaced == null) {
+          throw new SemanticException(ErrorMsg.INVALID_OUTPUT_FORMAT_TYPE
+            .getMsg());
+        }
+        importedofc = replaced.getCanonicalName();
+      } catch(Exception e) {
+        throw new SemanticException(ErrorMsg.INVALID_OUTPUT_FORMAT_TYPE
+            .getMsg());
+      }
       if ((!existingifc.equals(importedifc))
           || (!existingofc.equals(importedofc))) {
         throw new SemanticException(
@@ -460,6 +473,11 @@ public class ImportSemanticAnalyzer extends BaseSemanticAnalyzer {
           .getSerdeParam(serdeConstants.SERIALIZATION_FORMAT);
       String importedSerdeFormat = tableDesc.getSerdeProps().get(
           serdeConstants.SERIALIZATION_FORMAT);
+      /*
+       * If Imported SerdeFormat is null, then set it to "1" just as 
+       * metadata.Table.getEmptyTable
+       */
+      importedSerdeFormat = importedSerdeFormat == null ? "1" : importedSerdeFormat;
       if (!ObjectUtils.equals(existingSerdeFormat, importedSerdeFormat)) {
         throw new SemanticException(
             ErrorMsg.INCOMPATIBLE_SCHEMA

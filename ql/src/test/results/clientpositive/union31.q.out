@@ -1,6 +1,10 @@
-PREHOOK: query: drop table t1
+PREHOOK: query: -- SORT_QUERY_RESULTS
+
+drop table t1
 PREHOOK: type: DROPTABLE
-POSTHOOK: query: drop table t1
+POSTHOOK: query: -- SORT_QUERY_RESULTS
+
+drop table t1
 POSTHOOK: type: DROPTABLE
 PREHOOK: query: drop table t2
 PREHOOK: type: DROPTABLE
@@ -22,13 +26,17 @@ POSTHOOK: Input: default@src
 POSTHOOK: Output: default@t2
 PREHOOK: query: create table t3(key string, cnt int)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table t3(key string, cnt int)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@t3
 PREHOOK: query: create table t4(value string, cnt int)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table t4(value string, cnt int)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@t4
 PREHOOK: query: explain
 from
@@ -52,9 +60,6 @@ insert overwrite table t3
 insert overwrite table t4
   select value, count(1) group by value
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  (TOK_QUERY (TOK_FROM (TOK_SUBQUERY (TOK_UNION (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t1))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR TOK_ALLCOLREF)))) (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t2))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR TOK_ALLCOLREF))))) x)) (TOK_INSERT (TOK_DESTINATION (TOK_TAB (TOK_TABNAME t3))) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL key)) (TOK_SELEXPR (TOK_FUNCTION count 1))) (TOK_GROUPBY (TOK_TABLE_OR_COL key))) (TOK_INSERT (TOK_DESTINATION (TOK_TAB (TOK_TABNAME t4))) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL value)) (TOK_SELEXPR (TOK_FUNCTION count 1))) (TOK_GROUPBY (TOK_TABLE_OR_COL value))))
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-0 depends on stages: Stage-2
@@ -66,141 +71,103 @@ STAGE DEPENDENCIES:
 STAGE PLANS:
   Stage: Stage-2
     Map Reduce
-      Alias -> Map Operator Tree:
-        null-subquery1:x-subquery1:t1 
-          TableScan
-            alias: t1
-            Select Operator
-              expressions:
-                    expr: key
-                    type: string
-                    expr: value
-                    type: string
-              outputColumnNames: _col0, _col1
-              Union
-                Select Operator
-                  expressions:
-                        expr: _col0
-                        type: string
-                  outputColumnNames: _col0
-                  Group By Operator
-                    aggregations:
-                          expr: count(1)
-                    bucketGroup: false
-                    keys:
-                          expr: _col0
-                          type: string
-                    mode: hash
-                    outputColumnNames: _col0, _col1
-                    Reduce Output Operator
-                      key expressions:
-                            expr: _col0
-                            type: string
-                      sort order: +
-                      Map-reduce partition columns:
-                            expr: _col0
-                            type: string
-                      tag: -1
-                      value expressions:
-                            expr: _col1
-                            type: bigint
-                Select Operator
-                  expressions:
-                        expr: _col1
-                        type: string
-                  outputColumnNames: _col1
-                  Group By Operator
-                    aggregations:
-                          expr: count(1)
-                    bucketGroup: false
-                    keys:
-                          expr: _col1
-                          type: string
-                    mode: hash
-                    outputColumnNames: _col0, _col1
-                    File Output Operator
-                      compressed: false
-                      GlobalTableId: 0
-                      table:
-                          input format: org.apache.hadoop.mapred.SequenceFileInputFormat
-                          output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
-        null-subquery2:x-subquery2:t2 
+      Map Operator Tree:
           TableScan
             alias: t2
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: key
-                    type: string
-                    expr: value
-                    type: string
+              expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Union
+                Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
                 Select Operator
-                  expressions:
-                        expr: _col0
-                        type: string
+                  expressions: _col0 (type: string)
                   outputColumnNames: _col0
+                  Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
                   Group By Operator
-                    aggregations:
-                          expr: count(1)
-                    bucketGroup: false
-                    keys:
-                          expr: _col0
-                          type: string
+                    aggregations: count(1)
+                    keys: _col0 (type: string)
                     mode: hash
                     outputColumnNames: _col0, _col1
+                    Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
                     Reduce Output Operator
-                      key expressions:
-                            expr: _col0
-                            type: string
+                      key expressions: _col0 (type: string)
                       sort order: +
-                      Map-reduce partition columns:
-                            expr: _col0
-                            type: string
-                      tag: -1
-                      value expressions:
-                            expr: _col1
-                            type: bigint
+                      Map-reduce partition columns: _col0 (type: string)
+                      Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
+                      value expressions: _col1 (type: bigint)
                 Select Operator
-                  expressions:
-                        expr: _col1
-                        type: string
+                  expressions: _col1 (type: string)
                   outputColumnNames: _col1
+                  Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
                   Group By Operator
-                    aggregations:
-                          expr: count(1)
-                    bucketGroup: false
-                    keys:
-                          expr: _col1
-                          type: string
+                    aggregations: count(1)
+                    keys: _col1 (type: string)
                     mode: hash
                     outputColumnNames: _col0, _col1
+                    Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
                     File Output Operator
                       compressed: false
-                      GlobalTableId: 0
                       table:
                           input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                           output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                          serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
+          TableScan
+            alias: t1
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+            Select Operator
+              expressions: key (type: string), value (type: string)
+              outputColumnNames: _col0, _col1
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+              Union
+                Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
+                Select Operator
+                  expressions: _col0 (type: string)
+                  outputColumnNames: _col0
+                  Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
+                  Group By Operator
+                    aggregations: count(1)
+                    keys: _col0 (type: string)
+                    mode: hash
+                    outputColumnNames: _col0, _col1
+                    Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
+                    Reduce Output Operator
+                      key expressions: _col0 (type: string)
+                      sort order: +
+                      Map-reduce partition columns: _col0 (type: string)
+                      Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
+                      value expressions: _col1 (type: bigint)
+                Select Operator
+                  expressions: _col1 (type: string)
+                  outputColumnNames: _col1
+                  Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
+                  Group By Operator
+                    aggregations: count(1)
+                    keys: _col1 (type: string)
+                    mode: hash
+                    outputColumnNames: _col0, _col1
+                    Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
+                    File Output Operator
+                      compressed: false
+                      table:
+                          input format: org.apache.hadoop.mapred.SequenceFileInputFormat
+                          output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                          serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
       Reduce Operator Tree:
         Group By Operator
-          aggregations:
-                expr: count(VALUE._col0)
-          bucketGroup: false
-          keys:
-                expr: KEY._col0
-                type: string
+          aggregations: count(VALUE._col0)
+          keys: KEY._col0 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions:
-                  expr: _col0
-                  type: string
-                  expr: UDFToInteger(_col1)
-                  type: int
+            expressions: _col0 (type: string), UDFToInteger(_col1) (type: int)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
-              GlobalTableId: 1
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               table:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -222,40 +189,28 @@ STAGE PLANS:
 
   Stage: Stage-4
     Map Reduce
-      Alias -> Map Operator Tree:
-#### A masked pattern was here ####
+      Map Operator Tree:
+          TableScan
             Reduce Output Operator
-              key expressions:
-                    expr: _col0
-                    type: string
+              key expressions: _col0 (type: string)
               sort order: +
-              Map-reduce partition columns:
-                    expr: _col0
-                    type: string
-              tag: -1
-              value expressions:
-                    expr: _col1
-                    type: bigint
+              Map-reduce partition columns: _col0 (type: string)
+              Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
+              value expressions: _col1 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
-          aggregations:
-                expr: count(VALUE._col0)
-          bucketGroup: false
-          keys:
-                expr: KEY._col0
-                type: string
+          aggregations: count(VALUE._col0)
+          keys: KEY._col0 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions:
-                  expr: _col0
-                  type: string
-                  expr: UDFToInteger(_col1)
-                  type: int
+            expressions: _col0 (type: string), UDFToInteger(_col1) (type: int)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
-              GlobalTableId: 2
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               table:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -274,7 +229,6 @@ STAGE PLANS:
 
   Stage: Stage-5
     Stats-Aggr Operator
-
 
 PREHOOK: query: from
 (select * from t1
@@ -308,36 +262,28 @@ POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
 POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-PREHOOK: query: select * from t3 order by key
+PREHOOK: query: select * from t3
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t3
 #### A masked pattern was here ####
-POSTHOOK: query: select * from t3 order by key
+POSTHOOK: query: select * from t3
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t3
 #### A masked pattern was here ####
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
 0	6
 2	2
 4	2
 5	6
 8	2
 9	2
-PREHOOK: query: select * from t4 order by value
+PREHOOK: query: select * from t4
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t4
 #### A masked pattern was here ####
-POSTHOOK: query: select * from t4 order by value
+POSTHOOK: query: select * from t4
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t4
 #### A masked pattern was here ####
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
 val_0	6
 val_2	2
 val_4	2
@@ -346,22 +292,18 @@ val_8	2
 val_9	2
 PREHOOK: query: create table t5(c1 string, cnt int)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table t5(c1 string, cnt int)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@t5
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
 PREHOOK: query: create table t6(c1 string, cnt int)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table t6(c1 string, cnt int)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@t6
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
 PREHOOK: query: explain
 from
 (
@@ -386,13 +328,6 @@ insert overwrite table t5
 insert overwrite table t6
   select c1, sum(cnt) group by c1
 POSTHOOK: type: QUERY
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-ABSTRACT SYNTAX TREE:
-  (TOK_QUERY (TOK_FROM (TOK_SUBQUERY (TOK_UNION (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t1))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL key) c1) (TOK_SELEXPR (TOK_FUNCTION count 1) cnt)) (TOK_GROUPBY (TOK_TABLE_OR_COL key)))) (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t2))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL key) c1) (TOK_SELEXPR (TOK_FUNCTION count 1) cnt)) (TOK_GROUPBY (TOK_TABLE_OR_COL key))))) x)) (TOK_INSERT (TOK_DESTINATION (TOK_TAB (TOK_TABNAME t5))) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL c1)) (TOK_SELEXPR (TOK_FUNCTION sum (TOK_TABLE_OR_COL cnt)))) (TOK_GROUPBY (TOK_TABLE_OR_COL c1))) (TOK_INSERT (TOK_DESTINATION (TOK_TAB (TOK_TABNAME t6))) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL c1)) (TOK_SELEXPR (TOK_FUNCTION sum (TOK_TABLE_OR_COL cnt)))) (TOK_GROUPBY (TOK_TABLE_OR_COL c1))))
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-3 depends on stages: Stage-2, Stage-6
@@ -405,152 +340,107 @@ STAGE DEPENDENCIES:
 STAGE PLANS:
   Stage: Stage-2
     Map Reduce
-      Alias -> Map Operator Tree:
-        null-subquery2:x-subquery2:t2 
+      Map Operator Tree:
           TableScan
             alias: t2
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: key
-                    type: string
+              expressions: key (type: string)
               outputColumnNames: key
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
-                aggregations:
-                      expr: count(1)
-                bucketGroup: false
-                keys:
-                      expr: key
-                      type: string
+                aggregations: count(1)
+                keys: key (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: string
+                  key expressions: _col0 (type: string)
                   sort order: +
-                  Map-reduce partition columns:
-                        expr: _col0
-                        type: string
-                  tag: -1
-                  value expressions:
-                        expr: _col1
-                        type: bigint
+                  Map-reduce partition columns: _col0 (type: string)
+                  Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+                  value expressions: _col1 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
-          aggregations:
-                expr: count(VALUE._col0)
-          bucketGroup: false
-          keys:
-                expr: KEY._col0
-                type: string
+          aggregations: count(VALUE._col0)
+          keys: KEY._col0 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions:
-                  expr: _col0
-                  type: string
-                  expr: _col1
-                  type: bigint
+            expressions: _col0 (type: string), _col1 (type: bigint)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
-              GlobalTableId: 0
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                  serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
   Stage: Stage-3
     Map Reduce
-      Alias -> Map Operator Tree:
-#### A masked pattern was here ####
+      Map Operator Tree:
           TableScan
             Union
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Select Operator
-                expressions:
-                      expr: _col0
-                      type: string
-                      expr: _col1
-                      type: bigint
+                expressions: _col0 (type: string), _col1 (type: bigint)
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: string
+                  key expressions: _col0 (type: string)
                   sort order: +
-                  Map-reduce partition columns:
-                        expr: _col0
-                        type: string
-                  tag: -1
-                  value expressions:
-                        expr: _col1
-                        type: bigint
-#### A masked pattern was here ####
+                  Map-reduce partition columns: _col0 (type: string)
+                  Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+                  value expressions: _col1 (type: bigint)
           TableScan
             Union
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Select Operator
-                expressions:
-                      expr: _col0
-                      type: string
-                      expr: _col1
-                      type: bigint
+                expressions: _col0 (type: string), _col1 (type: bigint)
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: string
+                  key expressions: _col0 (type: string)
                   sort order: +
-                  Map-reduce partition columns:
-                        expr: _col0
-                        type: string
-                  tag: -1
-                  value expressions:
-                        expr: _col1
-                        type: bigint
+                  Map-reduce partition columns: _col0 (type: string)
+                  Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+                  value expressions: _col1 (type: bigint)
       Reduce Operator Tree:
         Forward
+          Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
           Group By Operator
-            aggregations:
-                  expr: sum(VALUE._col0)
-            bucketGroup: false
-            keys:
-                  expr: KEY._col0
-                  type: string
+            aggregations: sum(VALUE._col0)
+            keys: KEY._col0 (type: string)
             mode: complete
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: _col0
-                    type: string
-                    expr: UDFToInteger(_col1)
-                    type: int
+              expressions: _col0 (type: string), UDFToInteger(_col1) (type: int)
               outputColumnNames: _col0, _col1
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
               File Output Operator
                 compressed: false
-                GlobalTableId: 1
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
                 table:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                     name: default.t5
           Group By Operator
-            aggregations:
-                  expr: sum(VALUE._col0)
-            bucketGroup: false
-            keys:
-                  expr: KEY._col0
-                  type: string
+            aggregations: sum(VALUE._col0)
+            keys: KEY._col0 (type: string)
             mode: complete
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: _col0
-                    type: string
-                    expr: UDFToInteger(_col1)
-                    type: int
+              expressions: _col0 (type: string), UDFToInteger(_col1) (type: int)
               outputColumnNames: _col0, _col1
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
               File Output Operator
                 compressed: false
-                GlobalTableId: 2
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
                 table:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -585,60 +475,43 @@ STAGE PLANS:
 
   Stage: Stage-6
     Map Reduce
-      Alias -> Map Operator Tree:
-        null-subquery1:x-subquery1:t1 
+      Map Operator Tree:
           TableScan
             alias: t1
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: key
-                    type: string
+              expressions: key (type: string)
               outputColumnNames: key
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
-                aggregations:
-                      expr: count(1)
-                bucketGroup: false
-                keys:
-                      expr: key
-                      type: string
+                aggregations: count(1)
+                keys: key (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: string
+                  key expressions: _col0 (type: string)
                   sort order: +
-                  Map-reduce partition columns:
-                        expr: _col0
-                        type: string
-                  tag: -1
-                  value expressions:
-                        expr: _col1
-                        type: bigint
+                  Map-reduce partition columns: _col0 (type: string)
+                  Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+                  value expressions: _col1 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
-          aggregations:
-                expr: count(VALUE._col0)
-          bucketGroup: false
-          keys:
-                expr: KEY._col0
-                type: string
+          aggregations: count(VALUE._col0)
+          keys: KEY._col0 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions:
-                  expr: _col0
-                  type: string
-                  expr: _col1
-                  type: bigint
+            expressions: _col0 (type: string), _col1 (type: bigint)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
-              GlobalTableId: 0
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
-
+                  serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
 PREHOOK: query: from
 (
@@ -670,52 +543,32 @@ POSTHOOK: Input: default@t1
 POSTHOOK: Input: default@t2
 POSTHOOK: Output: default@t5
 POSTHOOK: Output: default@t6
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
 POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
 POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
 POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-PREHOOK: query: select * from t5 order by c1
+PREHOOK: query: select * from t5
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t5
 #### A masked pattern was here ####
-POSTHOOK: query: select * from t5 order by c1
+POSTHOOK: query: select * from t5
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t5
 #### A masked pattern was here ####
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 0	6
 2	2
 4	2
 5	6
 8	2
 9	2
-PREHOOK: query: select * from t6 order by c1
+PREHOOK: query: select * from t6
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t6
 #### A masked pattern was here ####
-POSTHOOK: query: select * from t6 order by c1
+POSTHOOK: query: select * from t6
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t6
 #### A masked pattern was here ####
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 0	6
 2	2
 4	2
@@ -730,14 +583,6 @@ POSTHOOK: query: drop table t1
 POSTHOOK: type: DROPTABLE
 POSTHOOK: Input: default@t1
 POSTHOOK: Output: default@t1
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 PREHOOK: query: drop table t2
 PREHOOK: type: DROPTABLE
 PREHOOK: Input: default@t2
@@ -746,14 +591,6 @@ POSTHOOK: query: drop table t2
 POSTHOOK: type: DROPTABLE
 POSTHOOK: Input: default@t2
 POSTHOOK: Output: default@t2
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 PREHOOK: query: create table t1 as select * from src where key < 10
 PREHOOK: type: CREATETABLE_AS_SELECT
 PREHOOK: Input: default@src
@@ -761,14 +598,6 @@ POSTHOOK: query: create table t1 as select * from src where key < 10
 POSTHOOK: type: CREATETABLE_AS_SELECT
 POSTHOOK: Input: default@src
 POSTHOOK: Output: default@t1
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 PREHOOK: query: create table t2 as select key, count(1) as cnt from src where key < 10 group by key
 PREHOOK: type: CREATETABLE_AS_SELECT
 PREHOOK: Input: default@src
@@ -776,40 +605,20 @@ POSTHOOK: query: create table t2 as select key, count(1) as cnt from src where k
 POSTHOOK: type: CREATETABLE_AS_SELECT
 POSTHOOK: Input: default@src
 POSTHOOK: Output: default@t2
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 PREHOOK: query: create table t7(c1 string, cnt int)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table t7(c1 string, cnt int)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@t7
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 PREHOOK: query: create table t8(c1 string, cnt int)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table t8(c1 string, cnt int)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@t8
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 PREHOOK: query: explain
 from
 (
@@ -834,17 +643,6 @@ insert overwrite table t7
 insert overwrite table t8
   select c1, count(1) group by c1
 POSTHOOK: type: QUERY
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-ABSTRACT SYNTAX TREE:
-  (TOK_QUERY (TOK_FROM (TOK_SUBQUERY (TOK_UNION (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t1))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL key) c1) (TOK_SELEXPR (TOK_FUNCTION count 1) cnt)) (TOK_GROUPBY (TOK_TABLE_OR_COL key)))) (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t2))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL key) c1) (TOK_SELEXPR (TOK_TABLE_OR_COL cnt)))))) x)) (TOK_INSERT (TOK_DESTINATION (TOK_TAB (TOK_TABNAME t7))) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL c1)) (TOK_SELEXPR (TOK_FUNCTION count 1))) (TOK_GROUPBY (TOK_TABLE_OR_COL c1))) (TOK_INSERT (TOK_DESTINATION (TOK_TAB (TOK_TABNAME t8))) (TOK_SELECT (TOK_SELEXPR (TOK_TABLE_OR_COL c1)) (TOK_SELEXPR (TOK_FUNCTION count 1))) (TOK_GROUPBY (TOK_TABLE_OR_COL c1))))
-
 STAGE DEPENDENCIES:
   Stage-6 is a root stage
   Stage-3 depends on stages: Stage-6
@@ -856,156 +654,111 @@ STAGE DEPENDENCIES:
 STAGE PLANS:
   Stage: Stage-6
     Map Reduce
-      Alias -> Map Operator Tree:
-        null-subquery1:x-subquery1:t1 
+      Map Operator Tree:
           TableScan
             alias: t1
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: key
-                    type: string
+              expressions: key (type: string)
               outputColumnNames: key
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
-                aggregations:
-                      expr: count(1)
-                bucketGroup: false
-                keys:
-                      expr: key
-                      type: string
+                aggregations: count(1)
+                keys: key (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: string
+                  key expressions: _col0 (type: string)
                   sort order: +
-                  Map-reduce partition columns:
-                        expr: _col0
-                        type: string
-                  tag: -1
-                  value expressions:
-                        expr: _col1
-                        type: bigint
+                  Map-reduce partition columns: _col0 (type: string)
+                  Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+                  value expressions: _col1 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
-          aggregations:
-                expr: count(VALUE._col0)
-          bucketGroup: false
-          keys:
-                expr: KEY._col0
-                type: string
+          aggregations: count(VALUE._col0)
+          keys: KEY._col0 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions:
-                  expr: _col0
-                  type: string
-                  expr: _col1
-                  type: bigint
-            outputColumnNames: _col0, _col1
+            expressions: _col0 (type: string)
+            outputColumnNames: _col0
+            Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
-              GlobalTableId: 0
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                  serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
   Stage: Stage-3
     Map Reduce
-      Alias -> Map Operator Tree:
-#### A masked pattern was here ####
-          TableScan
-            Union
-              Select Operator
-                expressions:
-                      expr: _col0
-                      type: string
-                outputColumnNames: _col0
-                Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: string
-                  sort order: +
-                  Map-reduce partition columns:
-                        expr: _col0
-                        type: string
-                  tag: -1
-                  value expressions:
-                        expr: 1
-                        type: int
-        null-subquery2:x-subquery2:t2 
+      Map Operator Tree:
           TableScan
             alias: t2
+            Statistics: Num rows: 6 Data size: 18 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: key
-                    type: string
-                    expr: cnt
-                    type: bigint
-              outputColumnNames: _col0, _col1
+              expressions: key (type: string)
+              outputColumnNames: _col0
+              Statistics: Num rows: 6 Data size: 18 Basic stats: COMPLETE Column stats: NONE
               Union
+                Statistics: Num rows: 11 Data size: 53 Basic stats: COMPLETE Column stats: NONE
                 Select Operator
-                  expressions:
-                        expr: _col0
-                        type: string
+                  expressions: _col0 (type: string)
                   outputColumnNames: _col0
+                  Statistics: Num rows: 11 Data size: 53 Basic stats: COMPLETE Column stats: NONE
                   Reduce Output Operator
-                    key expressions:
-                          expr: _col0
-                          type: string
+                    key expressions: _col0 (type: string)
                     sort order: +
-                    Map-reduce partition columns:
-                          expr: _col0
-                          type: string
-                    tag: -1
-                    value expressions:
-                          expr: 1
-                          type: int
+                    Map-reduce partition columns: _col0 (type: string)
+                    Statistics: Num rows: 11 Data size: 53 Basic stats: COMPLETE Column stats: NONE
+          TableScan
+            Union
+              Statistics: Num rows: 11 Data size: 53 Basic stats: COMPLETE Column stats: NONE
+              Select Operator
+                expressions: _col0 (type: string)
+                outputColumnNames: _col0
+                Statistics: Num rows: 11 Data size: 53 Basic stats: COMPLETE Column stats: NONE
+                Reduce Output Operator
+                  key expressions: _col0 (type: string)
+                  sort order: +
+                  Map-reduce partition columns: _col0 (type: string)
+                  Statistics: Num rows: 11 Data size: 53 Basic stats: COMPLETE Column stats: NONE
       Reduce Operator Tree:
         Forward
+          Statistics: Num rows: 11 Data size: 53 Basic stats: COMPLETE Column stats: NONE
           Group By Operator
-            aggregations:
-                  expr: count(VALUE._col0)
-            bucketGroup: false
-            keys:
-                  expr: KEY._col0
-                  type: string
+            aggregations: count(1)
+            keys: KEY._col0 (type: string)
             mode: complete
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 5 Data size: 24 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: _col0
-                    type: string
-                    expr: UDFToInteger(_col1)
-                    type: int
+              expressions: _col0 (type: string), UDFToInteger(_col1) (type: int)
               outputColumnNames: _col0, _col1
+              Statistics: Num rows: 5 Data size: 24 Basic stats: COMPLETE Column stats: NONE
               File Output Operator
                 compressed: false
-                GlobalTableId: 1
+                Statistics: Num rows: 5 Data size: 24 Basic stats: COMPLETE Column stats: NONE
                 table:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                     name: default.t7
           Group By Operator
-            aggregations:
-                  expr: count(VALUE._col0)
-            bucketGroup: false
-            keys:
-                  expr: KEY._col0
-                  type: string
+            aggregations: count(1)
+            keys: KEY._col0 (type: string)
             mode: complete
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 5 Data size: 24 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: _col0
-                    type: string
-                    expr: UDFToInteger(_col1)
-                    type: int
+              expressions: _col0 (type: string), UDFToInteger(_col1) (type: int)
               outputColumnNames: _col0, _col1
+              Statistics: Num rows: 5 Data size: 24 Basic stats: COMPLETE Column stats: NONE
               File Output Operator
                 compressed: false
-                GlobalTableId: 2
+                Statistics: Num rows: 5 Data size: 24 Basic stats: COMPLETE Column stats: NONE
                 table:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -1038,7 +791,6 @@ STAGE PLANS:
   Stage: Stage-5
     Stats-Aggr Operator
 
-
 PREHOOK: query: from
 (
  select key as c1, count(1) as cnt from t1 group by key
@@ -1069,64 +821,32 @@ POSTHOOK: Input: default@t1
 POSTHOOK: Input: default@t2
 POSTHOOK: Output: default@t7
 POSTHOOK: Output: default@t8
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 POSTHOOK: Lineage: t7.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
 POSTHOOK: Lineage: t7.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 POSTHOOK: Lineage: t8.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
 POSTHOOK: Lineage: t8.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-PREHOOK: query: select * from t7 order by c1
+PREHOOK: query: select * from t7
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t7
 #### A masked pattern was here ####
-POSTHOOK: query: select * from t7 order by c1
+POSTHOOK: query: select * from t7
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t7
 #### A masked pattern was here ####
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t7.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t7.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t8.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t8.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 0	2
 2	2
 4	2
 5	2
 8	2
 9	2
-PREHOOK: query: select * from t8 order by c1
+PREHOOK: query: select * from t8
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t8
 #### A masked pattern was here ####
-POSTHOOK: query: select * from t8 order by c1
+POSTHOOK: query: select * from t8
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t8
 #### A masked pattern was here ####
-POSTHOOK: Lineage: t3.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t3.key EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t4.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t4.value EXPRESSION [(t2)t2.FieldSchema(name:value, type:string, comment:null), (t1)t1.FieldSchema(name:value, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t5.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t6.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t6.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t7.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t7.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
-POSTHOOK: Lineage: t8.c1 EXPRESSION [(t2)t2.FieldSchema(name:key, type:string, comment:null), (t1)t1.FieldSchema(name:key, type:string, comment:null), ]
-POSTHOOK: Lineage: t8.cnt EXPRESSION [(t2)t2.null, (t1)t1.null, ]
 0	2
 2	2
 4	2

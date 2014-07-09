@@ -4,21 +4,23 @@ POSTHOOK: query: DROP VIEW testView
 POSTHOOK: type: DROPVIEW
 PREHOOK: query: CREATE VIEW testView as SELECT * FROM srcpart
 PREHOOK: type: CREATEVIEW
-#### A masked pattern was here ####
+PREHOOK: Input: default@srcpart
 POSTHOOK: query: CREATE VIEW testView as SELECT * FROM srcpart
 POSTHOOK: type: CREATEVIEW
+POSTHOOK: Input: default@srcpart
 POSTHOOK: Output: default@testView
-#### A masked pattern was here ####
 PREHOOK: query: DESCRIBE FORMATTED testView
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@testview
 POSTHOOK: query: DESCRIBE FORMATTED testView
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@testview
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
-ds                  	string              	None                
-hr                  	string              	None                
+key                 	string              	                    
+value               	string              	                    
+ds                  	string              	                    
+hr                  	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -43,18 +45,20 @@ View Original Text: 	SELECT * FROM srcpart
 View Expanded Text: 	SELECT `srcpart`.`key`, `srcpart`.`value`, `srcpart`.`ds`, `srcpart`.`hr` FROM `default`.`srcpart`	 
 PREHOOK: query: ALTER VIEW testView AS SELECT value FROM src WHERE key=86
 PREHOOK: type: CREATEVIEW
-#### A masked pattern was here ####
+PREHOOK: Input: default@src
 POSTHOOK: query: ALTER VIEW testView AS SELECT value FROM src WHERE key=86
 POSTHOOK: type: CREATEVIEW
+POSTHOOK: Input: default@src
 POSTHOOK: Output: default@testview
-#### A masked pattern was here ####
 PREHOOK: query: DESCRIBE FORMATTED testView
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@testview
 POSTHOOK: query: DESCRIBE FORMATTED testView
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@testview
 # col_name            	data_type           	comment             
 	 	 
-value               	string              	None                
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -83,23 +87,25 @@ WHERE key > 80 AND key < 100
 ORDER BY key, value
 LIMIT 10
 PREHOOK: type: CREATEVIEW
-#### A masked pattern was here ####
+PREHOOK: Input: default@src
 POSTHOOK: query: ALTER VIEW testView AS
 SELECT * FROM src
 WHERE key > 80 AND key < 100
 ORDER BY key, value
 LIMIT 10
 POSTHOOK: type: CREATEVIEW
+POSTHOOK: Input: default@src
 POSTHOOK: Output: default@testview
-#### A masked pattern was here ####
 PREHOOK: query: DESCRIBE FORMATTED testView
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@testview
 POSTHOOK: query: DESCRIBE FORMATTED testView
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@testview
 # col_name            	data_type           	comment             
 	 	 
-key                 	string              	None                
-value               	string              	None                
+key                 	string              	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 

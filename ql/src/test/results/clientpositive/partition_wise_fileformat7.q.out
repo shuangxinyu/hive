@@ -1,7 +1,9 @@
 PREHOOK: query: create table partition_test_partitioned(key string, value string) partitioned by (dt string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table partition_test_partitioned(key string, value string) partitioned by (dt string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@partition_test_partitioned
 PREHOOK: query: alter table partition_test_partitioned set fileformat rcfile
 PREHOOK: type: ALTERTABLE_FILEFORMAT
@@ -33,8 +35,6 @@ POSTHOOK: type: QUERY
 POSTHOOK: Input: default@partition_test_partitioned
 POSTHOOK: Input: default@partition_test_partitioned@dt=101
 #### A masked pattern was here ####
-POSTHOOK: Lineage: partition_test_partitioned PARTITION(dt=101).key SIMPLE [(src1)src1.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: partition_test_partitioned PARTITION(dt=101).value SIMPLE [(src1)src1.FieldSchema(name:value, type:string, comment:default), ]
 115
 PREHOOK: query: select count(1) from partition_test_partitioned  a join partition_test_partitioned  b on a.key = b.key
 where a.dt = '101' and b.dt = '101' and a.key < 100
@@ -48,6 +48,4 @@ POSTHOOK: type: QUERY
 POSTHOOK: Input: default@partition_test_partitioned
 POSTHOOK: Input: default@partition_test_partitioned@dt=101
 #### A masked pattern was here ####
-POSTHOOK: Lineage: partition_test_partitioned PARTITION(dt=101).key SIMPLE [(src1)src1.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: partition_test_partitioned PARTITION(dt=101).value SIMPLE [(src1)src1.FieldSchema(name:value, type:string, comment:default), ]
 2

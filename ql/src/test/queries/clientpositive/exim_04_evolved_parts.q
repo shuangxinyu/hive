@@ -13,14 +13,17 @@ alter table exim_employee add columns (emp_dept int);
 alter table exim_employee clustered by (emp_sex, emp_dept) sorted by (emp_id desc) into 5 buckets;
 alter table exim_employee add partition (emp_country='in', emp_state='tn');
 
-alter table exim_employee set serde "org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe" with serdeproperties ('serialization.format'='2');
 alter table exim_employee set fileformat 
-	inputformat "org.apache.hadoop.hive.ql.io.BucketizedHiveInputFormat" 
-	outputformat "org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat";
+	inputformat  "org.apache.hadoop.hive.ql.io.BucketizedHiveInputFormat" 
+	outputformat "org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat"
+        serde        "org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe";
+    
+;
+alter table exim_employee set serde "org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe" with serdeproperties ('serialization.format'='2');
 
 alter table exim_employee add partition (emp_country='in', emp_state='ka');
-dfs -mkdir ../build/ql/test/data/exports/exim_employee/temp;
-dfs -rmr ../build/ql/test/data/exports/exim_employee;
+dfs ${system:test.dfs.mkdir} target/tmp/ql/test/data/exports/exim_employee/temp;
+dfs -rmr target/tmp/ql/test/data/exports/exim_employee;
 export table exim_employee to 'ql/test/data/exports/exim_employee';
 drop table exim_employee;
 
@@ -32,7 +35,7 @@ describe extended exim_employee;
 describe extended exim_employee partition (emp_country='in', emp_state='tn');
 describe extended exim_employee partition (emp_country='in', emp_state='ka');
 show table extended like exim_employee;
-dfs -rmr ../build/ql/test/data/exports/exim_employee;
+dfs -rmr target/tmp/ql/test/data/exports/exim_employee;
 select * from exim_employee;
 drop table exim_employee;
 

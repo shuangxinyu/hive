@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Index;
@@ -152,9 +153,10 @@ public class AggregateIndexHandler extends CompactIndexHandler {
       HiveConf builderConf = new HiveConf(getConf(), AggregateIndexHandler.class);
       builderConf.setBoolVar(HiveConf.ConfVars.HIVEMERGEMAPFILES, false);
       builderConf.setBoolVar(HiveConf.ConfVars.HIVEMERGEMAPREDFILES, false);
+      builderConf.setBoolVar(HiveConf.ConfVars.HIVEMERGETEZFILES, false);
       Task<?> rootTask = IndexUtils.createRootTask(builderConf, inputs, outputs,
           command, (LinkedHashMap<String, String>) partSpec, indexTableName, dbName);
-
+      super.setStatsDir(builderConf);
       return rootTask;
     }
   }

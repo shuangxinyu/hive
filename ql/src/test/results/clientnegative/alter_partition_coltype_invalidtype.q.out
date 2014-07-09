@@ -1,9 +1,11 @@
 PREHOOK: query: -- create testing table
 create table alter_coltype(key string, value string) partitioned by (dt string, ts string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: -- create testing table
 create table alter_coltype(key string, value string) partitioned by (dt string, ts string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@alter_coltype
 PREHOOK: query: -- insert and create a partition
 insert overwrite table alter_coltype partition(dt='100x', ts='6:30pm') select * from src1
@@ -19,21 +21,18 @@ POSTHOOK: Lineage: alter_coltype PARTITION(dt=100x,ts=6:30pm).key SIMPLE [(src1)
 POSTHOOK: Lineage: alter_coltype PARTITION(dt=100x,ts=6:30pm).value SIMPLE [(src1)src1.FieldSchema(name:value, type:string, comment:default), ]
 PREHOOK: query: desc alter_coltype
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@alter_coltype
 POSTHOOK: query: desc alter_coltype
 POSTHOOK: type: DESCTABLE
-POSTHOOK: Lineage: alter_coltype PARTITION(dt=100x,ts=6:30pm).key SIMPLE [(src1)src1.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: alter_coltype PARTITION(dt=100x,ts=6:30pm).value SIMPLE [(src1)src1.FieldSchema(name:value, type:string, comment:default), ]
-# col_name            	data_type           	comment             
-	 	 
-key                 	string              	None                
-value               	string              	None                
-dt                  	string              	None                
-ts                  	string              	None                
+POSTHOOK: Input: default@alter_coltype
+key                 	string              	                    
+value               	string              	                    
+dt                  	string              	                    
+ts                  	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-dt                  	string              	None                
-ts                  	string              	None                
+dt                  	string              	                    
+ts                  	string              	                    
 FAILED: ParseException line 4:47 cannot recognize input near 'time' ')' '<EOF>' in column type
-

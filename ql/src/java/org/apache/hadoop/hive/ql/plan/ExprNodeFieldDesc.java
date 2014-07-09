@@ -87,7 +87,6 @@ public class ExprNodeFieldDesc extends ExprNodeDesc implements Serializable {
     return desc.toString() + "." + fieldName;
   }
 
-  @Explain(displayName = "expr")
   @Override
   public String getExprString() {
     return desc.getExprString() + "." + fieldName;
@@ -104,7 +103,7 @@ public class ExprNodeFieldDesc extends ExprNodeDesc implements Serializable {
 
   @Override
   public ExprNodeDesc clone() {
-    return new ExprNodeFieldDesc(typeInfo, desc, fieldName, isList);
+    return new ExprNodeFieldDesc(typeInfo, desc.clone(), fieldName, isList);
   }
 
   @Override

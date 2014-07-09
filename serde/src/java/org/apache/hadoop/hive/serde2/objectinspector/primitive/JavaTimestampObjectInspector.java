@@ -20,13 +20,14 @@ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
 import java.sql.Timestamp;
 
 import org.apache.hadoop.hive.serde2.io.TimestampWritable;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 
 public class JavaTimestampObjectInspector
     extends AbstractPrimitiveJavaObjectInspector
     implements SettableTimestampObjectInspector {
 
   protected JavaTimestampObjectInspector() {
-    super(PrimitiveObjectInspectorUtils.timestampTypeEntry);
+    super(TypeInfoFactory.timestampTypeInfo);
   }
 
   public TimestampWritable getPrimitiveWritableObject(Object o) {
@@ -43,6 +44,9 @@ public class JavaTimestampObjectInspector
   }
 
   public Object set(Object o, Timestamp value) {
+    if (value == null) {
+      return null;
+    }
     ((Timestamp) o).setTime(value.getTime());
     return o;
   }
@@ -53,6 +57,9 @@ public class JavaTimestampObjectInspector
   }
 
   public Object set(Object o, TimestampWritable tw) {
+    if (tw == null) {
+      return null;
+    }
     Timestamp t = (Timestamp) o;
     t.setTime(tw.getTimestamp().getTime());
     t.setNanos(tw.getTimestamp().getNanos());

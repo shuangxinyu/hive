@@ -21,6 +21,7 @@ package org.apache.hive.service.cli.operation;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hive.service.cli.FetchOrientation;
@@ -28,6 +29,7 @@ import org.apache.hive.service.cli.HiveSQLException;
 import org.apache.hive.service.cli.OperationState;
 import org.apache.hive.service.cli.OperationType;
 import org.apache.hive.service.cli.RowSet;
+import org.apache.hive.service.cli.RowSetFactory;
 import org.apache.hive.service.cli.TableSchema;
 import org.apache.hive.service.cli.session.HiveSession;
 
@@ -41,12 +43,13 @@ public class GetTablesOperation extends MetadataOperation {
   private final String schemaName;
   private final String tableName;
   private final List<String> tableTypes = new ArrayList<String>();
-  private final RowSet rowSet = new RowSet();
+  private final RowSet rowSet;
+  private final TableTypeMapping tableTypeMapping;
 
 
   private static final TableSchema RESULT_SET_SCHEMA = new TableSchema()
   .addStringColumn("TABLE_CAT", "Catalog name. NULL if not applicable.")
-  .addStringColumn("TABLE_SCHEMA", "Schema name.")
+  .addStringColumn("TABLE_SCHEM", "Schema name.")
   .addStringColumn("TABLE_NAME", "Table name.")
   .addStringColumn("TABLE_TYPE", "The table type, e.g. \"TABLE\", \"VIEW\", etc.")
   .addStringColumn("REMARKS", "Comments about the table.");
@@ -58,9 +61,14 @@ public class GetTablesOperation extends MetadataOperation {
     this.catalogName = catalogName;
     this.schemaName = schemaName;
     this.tableName = tableName;
+    String tableMappingStr = getParentSession().getHiveConf().
+        getVar(HiveConf.ConfVars.HIVE_SERVER2_TABLE_TYPE_MAPPING);
+    tableTypeMapping =
+        TableTypeMappingFactory.getTableTypeMapping(tableMappingStr);
     if (tableTypes != null) {
       this.tableTypes.addAll(tableTypes);
     }
+    this.rowSet = RowSetFactory.create(RESULT_SET_SCHEMA, getProtocolVersion());
   }
 
   /* (non-Javadoc)
@@ -80,11 +88,12 @@ public class GetTablesOperation extends MetadataOperation {
               DEFAULT_HIVE_CATALOG,
               table.getDbName(),
               table.getTableName(),
-              table.getTableType(),
+              tableTypeMapping.mapToClientType(table.getTableType()),
               table.getParameters().get("comment")
               };
-          if (tableTypes.isEmpty() || tableTypes.contains(table.getTableType())) {
-            rowSet.addRow(RESULT_SET_SCHEMA, rowData);
+          if (tableTypes.isEmpty() || tableTypes.contains(
+                tableTypeMapping.mapToClientType(table.getTableType()))) {
+            rowSet.addRow(rowData);
           }
         }
       }
@@ -110,6 +119,10 @@ public class GetTablesOperation extends MetadataOperation {
   @Override
   public RowSet getNextRowSet(FetchOrientation orientation, long maxRows) throws HiveSQLException {
     assertState(OperationState.FINISHED);
+    validateDefaultFetchOrientation(orientation);
+    if (orientation.equals(FetchOrientation.FETCH_FIRST)) {
+      rowSet.setStartOffset(0);
+    }
     return rowSet.extractSubset((int)maxRows);
   }
 }

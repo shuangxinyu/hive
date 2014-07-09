@@ -17,10 +17,10 @@
  */
 package org.apache.hadoop.hive.ql.io;
 
+import static org.junit.Assert.assertEquals;
+
 import java.io.IOException;
 import java.util.Random;
-
-import junit.framework.TestCase;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -39,7 +39,7 @@ import org.apache.hadoop.io.compress.DefaultCodec;
  * PerformTestRCFileAndSeqFile.
  *
  */
-public class PerformTestRCFileAndSeqFile extends TestCase {
+public class PerformTestRCFileAndSeqFile {
 
   private final Configuration conf = new Configuration();
 
@@ -63,7 +63,7 @@ public class PerformTestRCFileAndSeqFile extends TestCase {
     }
     conf.setInt(RCFile.Writer.COLUMNS_BUFFER_SIZE_CONF_STR, 1 * 1024 * 1024);
     if (file == null) {
-      Path dir = new Path(System.getProperty("test.data.dir", ".") + "/mapred");
+      Path dir = new Path(System.getProperty("test.tmp.dir", ".") + "/mapred");
       testRCFile = new Path(dir, "test_rcfile");
       testSeqFile = new Path(dir, "test_seqfile");
     } else {
@@ -301,7 +301,7 @@ public class PerformTestRCFileAndSeqFile extends TestCase {
 
     java.util.ArrayList<Integer> readCols = new java.util.ArrayList<Integer>();
     readCols.add(Integer.valueOf(0));
-    ColumnProjectionUtils.setReadColumnIDs(conf, readCols);
+    ColumnProjectionUtils.appendReadColumns(conf, readCols);
     RCFile.Reader reader = new RCFile.Reader(fs, file, conf);
 
     LongWritable rowID = new LongWritable();
@@ -336,7 +336,7 @@ public class PerformTestRCFileAndSeqFile extends TestCase {
     java.util.ArrayList<Integer> readCols = new java.util.ArrayList<Integer>();
     readCols.add(Integer.valueOf(0));
     readCols.add(Integer.valueOf(allColumnsNumber - 1));
-    ColumnProjectionUtils.setReadColumnIDs(conf, readCols);
+    ColumnProjectionUtils.appendReadColumns(conf, readCols);
     RCFile.Reader reader = new RCFile.Reader(fs, file, conf);
 
     LongWritable rowID = new LongWritable();
@@ -371,7 +371,7 @@ public class PerformTestRCFileAndSeqFile extends TestCase {
 
     int actualReadCount = 0;
 
-    ColumnProjectionUtils.setFullyReadColumns(conf);
+    ColumnProjectionUtils.setReadAllColumns(conf);
     RCFile.Reader reader = new RCFile.Reader(fs, file, conf);
 
     LongWritable rowID = new LongWritable();

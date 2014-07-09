@@ -19,22 +19,28 @@ package org.apache.hadoop.hive.ql.plan;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.Task;
+import org.apache.hadoop.hive.ql.exec.Utilities;
 
 /**
  * ConditionalResolverSkewJoin.
  *
  */
 public class ConditionalResolverCommonJoin implements ConditionalResolver, Serializable {
+
   private static final long serialVersionUID = 1L;
+  private static final Log LOG = LogFactory.getLog(ConditionalResolverCommonJoin.class);
 
   /**
    * ConditionalResolverSkewJoinCtx.
@@ -43,23 +49,23 @@ public class ConditionalResolverCommonJoin implements ConditionalResolver, Seria
   public static class ConditionalResolverCommonJoinCtx implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private HashMap<String, Task<? extends Serializable>> aliasToTask;
+    private HashMap<Task<? extends Serializable>, Set<String>> taskToAliases;
     HashMap<String, ArrayList<String>> pathToAliases;
     HashMap<String, Long> aliasToKnownSize;
     private Task<? extends Serializable> commonJoinTask;
 
-    private String localTmpDir;
-    private String hdfsTmpDir;
+    private Path localTmpDir;
+    private Path hdfsTmpDir;
 
     public ConditionalResolverCommonJoinCtx() {
     }
 
-    public HashMap<String, Task<? extends Serializable>> getAliasToTask() {
-      return aliasToTask;
+    public HashMap<Task<? extends Serializable>, Set<String>> getTaskToAliases() {
+      return taskToAliases;
     }
 
-    public void setAliasToTask(HashMap<String, Task<? extends Serializable>> aliasToTask) {
-      this.aliasToTask = aliasToTask;
+    public void setTaskToAliases(HashMap<Task<? extends Serializable>, Set<String>> taskToAliases) {
+      this.taskToAliases = taskToAliases;
     }
 
     public Task<? extends Serializable> getCommonJoinTask() {
@@ -71,7 +77,8 @@ public class ConditionalResolverCommonJoin implements ConditionalResolver, Seria
     }
 
     public HashMap<String, Long> getAliasToKnownSize() {
-      return aliasToKnownSize;
+      return aliasToKnownSize == null ?
+          aliasToKnownSize = new HashMap<String, Long>() : aliasToKnownSize;
     }
 
     public void setAliasToKnownSize(HashMap<String, Long> aliasToKnownSize) {
@@ -86,20 +93,34 @@ public class ConditionalResolverCommonJoin implements ConditionalResolver, Seria
       this.pathToAliases = pathToAliases;
     }
 
-    public String getLocalTmpDir() {
+    public Path getLocalTmpDir() {
       return localTmpDir;
     }
 
-    public void setLocalTmpDir(String localTmpDir) {
+    public void setLocalTmpDir(Path localTmpDir) {
       this.localTmpDir = localTmpDir;
     }
 
-    public String getHdfsTmpDir() {
+    public Path getHdfsTmpDir() {
       return hdfsTmpDir;
     }
 
-    public void setHdfsTmpDir(String hdfsTmpDir) {
+    public void setHdfsTmpDir(Path hdfsTmpDir) {
       this.hdfsTmpDir = hdfsTmpDir;
+    }
+
+    @Override
+    public ConditionalResolverCommonJoinCtx clone() {
+      ConditionalResolverCommonJoinCtx ctx = new ConditionalResolverCommonJoinCtx();
+      ctx.setTaskToAliases(taskToAliases);
+      ctx.setCommonJoinTask(commonJoinTask);
+      ctx.setPathToAliases(pathToAliases);
+      ctx.setHdfsTmpDir(hdfsTmpDir);
+      ctx.setLocalTmpDir(localTmpDir);
+      // if any of join participants is from other MR, it has alias like '[pos:]$INTNAME'
+      // which of size should be caculated for each resolver.
+      ctx.setAliasToKnownSize(new HashMap<String, Long>(aliasToKnownSize));
+      return ctx;
     }
   }
 
@@ -108,24 +129,18 @@ public class ConditionalResolverCommonJoin implements ConditionalResolver, Seria
 
   @Override
   public List<Task<? extends Serializable>> getTasks(HiveConf conf, Object objCtx) {
-    ConditionalResolverCommonJoinCtx ctx = (ConditionalResolverCommonJoinCtx) objCtx;
+    ConditionalResolverCommonJoinCtx ctx = ((ConditionalResolverCommonJoinCtx) objCtx).clone();
     List<Task<? extends Serializable>> resTsks = new ArrayList<Task<? extends Serializable>>();
 
     // get aliasToPath and pass it to the heuristic
-    HashMap<String, ArrayList<String>> pathToAliases = ctx.getPathToAliases();
-    HashMap<String, Long> aliasToKnownSize = ctx.getAliasToKnownSize();
-    String bigTableAlias = this.resolveMapJoinTask(pathToAliases, ctx
-        .getAliasToTask(), aliasToKnownSize, ctx.getHdfsTmpDir(), ctx
-        .getLocalTmpDir(), conf);
+    Task<? extends Serializable> task = resolveDriverAlias(ctx, conf);
 
-    if (bigTableAlias == null) {
+    if (task == null) {
       // run common join task
       resTsks.add(ctx.getCommonJoinTask());
     } else {
-      // run the map join task
-      Task<? extends Serializable> task = ctx.getAliasToTask().get(bigTableAlias);
-      //set task tag
-      if(task.getTaskTag() == Task.CONVERTED_LOCAL_MAPJOIN) {
+      // run the map join task, set task tag
+      if (task.getBackupTask() != null) {
         task.getBackupTask().setTaskTag(Task.BACKUP_COMMON_JOIN);
       }
       resTsks.add(task);
@@ -135,99 +150,96 @@ public class ConditionalResolverCommonJoin implements ConditionalResolver, Seria
     return resTsks;
   }
 
-  class AliasFileSizePair implements Comparable<AliasFileSizePair> {
-    String alias;
-    long size;
-    AliasFileSizePair(String alias, long size) {
-      super();
-      this.alias = alias;
-      this.size = size;
+  private Task<? extends Serializable> resolveDriverAlias(ConditionalResolverCommonJoinCtx ctx, HiveConf conf) {
+    try {
+      resolveUnknownSizes(ctx, conf);
+      return resolveMapJoinTask(ctx, conf);
+    } catch (Exception e) {
+      LOG.info("Failed to resolve driver alias by exception.. Falling back to common join", e);
     }
-    @Override
-    public int compareTo(AliasFileSizePair o) {
-      if (o == null) {
-        return 1;
-      }
-      return (int)(size - o.size);
-    }
+    return null;
   }
 
-  private String resolveMapJoinTask(
-      HashMap<String, ArrayList<String>> pathToAliases,
-      HashMap<String, Task<? extends Serializable>> aliasToTask,
-      HashMap<String, Long> aliasToKnownSize, String hdfsTmpDir,
-      String localTmpDir, HiveConf conf) {
+  protected Task<? extends Serializable> resolveMapJoinTask(
+      ConditionalResolverCommonJoinCtx ctx, HiveConf conf) throws Exception {
 
-    String bigTableFileAlias = null;
-    long smallTablesFileSizeSum = 0;
+    Set<String> participants = getParticipants(ctx);
 
-    Map<String, AliasFileSizePair> aliasToFileSizeMap = new HashMap<String, AliasFileSizePair>();
-    for (Map.Entry<String, Long> entry : aliasToKnownSize.entrySet()) {
-      String alias = entry.getKey();
-      AliasFileSizePair pair = new AliasFileSizePair(alias, entry.getValue());
-      aliasToFileSizeMap.put(alias, pair);
+    Map<String, Long> aliasToKnownSize = ctx.getAliasToKnownSize();
+    Map<String, ArrayList<String>> pathToAliases = ctx.getPathToAliases();
+    Map<Task<? extends Serializable>, Set<String>> taskToAliases = ctx.getTaskToAliases();
+
+    long threshold = HiveConf.getLongVar(conf, HiveConf.ConfVars.HIVESMALLTABLESFILESIZE);
+
+    Long bigTableSize = null;
+    Long smallTablesSize = null;
+    Map.Entry<Task<? extends Serializable>, Set<String>> nextTask = null;
+    for (Map.Entry<Task<? extends Serializable>, Set<String>> entry : taskToAliases.entrySet()) {
+      Set<String> aliases = entry.getValue();
+      long sumOfOthers = Utilities.sumOfExcept(aliasToKnownSize, participants, aliases);
+      if (sumOfOthers < 0 || sumOfOthers > threshold) {
+        continue;
+      }
+      // at most one alias is unknown. we can safely regard it as a big alias
+      long aliasSize = Utilities.sumOf(aliasToKnownSize, aliases);
+      if (bigTableSize == null || aliasSize > bigTableSize) {
+        nextTask = entry;
+        bigTableSize = aliasSize;
+        smallTablesSize = sumOfOthers;
+      }
     }
+    if (nextTask != null) {
+      LOG.info("Driver alias is " + nextTask.getValue() + " with size " + bigTableSize
+          + " (total size of others : " + smallTablesSize + ", threshold : " + threshold + ")");
+      return nextTask.getKey();
+    }
+    LOG.info("Failed to resolve driver alias (threshold : " + threshold +
+        ", length mapping : " + aliasToKnownSize + ")");
+    return null;
+  }
 
-    try {
-      // need to compute the input size at runtime, and select the biggest as
-      // the big table.
-      for (Map.Entry<String, ArrayList<String>> oneEntry : pathToAliases
-          .entrySet()) {
-        String p = oneEntry.getKey();
-        // this path is intermediate data
-        if (p.startsWith(hdfsTmpDir) || p.startsWith(localTmpDir)) {
-          ArrayList<String> aliasArray = oneEntry.getValue();
-          if (aliasArray.size() <= 0) {
-            continue;
-          }
-          Path path = new Path(p);
-          FileSystem fs = path.getFileSystem(conf);
-          long fileSize = fs.getContentSummary(path).getLength();
-          for (String alias : aliasArray) {
-            AliasFileSizePair pair = aliasToFileSizeMap.get(alias);
-            if (pair == null) {
-              pair = new AliasFileSizePair(alias, 0);
-              aliasToFileSizeMap.put(alias, pair);
-            }
-            pair.size += fileSize;
+  private Set<String> getParticipants(ConditionalResolverCommonJoinCtx ctx) {
+    Set<String> participants = new HashSet<String>();
+    for (List<String> aliases : ctx.getPathToAliases().values()) {
+      participants.addAll(aliases);
+    }
+    return participants;
+  }
+
+  protected void resolveUnknownSizes(ConditionalResolverCommonJoinCtx ctx, HiveConf conf)
+      throws Exception {
+
+    Set<String> aliases = getParticipants(ctx);
+
+    Map<String, Long> aliasToKnownSize = ctx.getAliasToKnownSize();
+    Map<String, ArrayList<String>> pathToAliases = ctx.getPathToAliases();
+
+    Set<String> unknownPaths = new HashSet<String>();
+    for (Map.Entry<String, ArrayList<String>> entry : pathToAliases.entrySet()) {
+      for (String alias : entry.getValue()) {
+        if (aliases.contains(alias) && !aliasToKnownSize.containsKey(alias)) {
+          unknownPaths.add(entry.getKey());
+          break;
+        }
+      }
+    }
+    Path hdfsTmpDir = ctx.getHdfsTmpDir();
+    Path localTmpDir = ctx.getLocalTmpDir();
+    // need to compute the input size at runtime, and select the biggest as
+    // the big table.
+    for (String p : unknownPaths) {
+      // this path is intermediate data
+      if (p.startsWith(hdfsTmpDir.toString()) || p.startsWith(localTmpDir.toString())) {
+        Path path = new Path(p);
+        FileSystem fs = path.getFileSystem(conf);
+        long fileSize = fs.getContentSummary(path).getLength();
+        for (String alias : pathToAliases.get(p)) {
+          Long length = aliasToKnownSize.get(alias);
+          if (length == null) {
+            aliasToKnownSize.put(alias, fileSize);
           }
         }
       }
-      // generate file size to alias mapping; but not set file size as key,
-      // because different file may have the same file size.
-
-      List<AliasFileSizePair> aliasFileSizeList = new ArrayList<AliasFileSizePair>(
-          aliasToFileSizeMap.values());
-
-      Collections.sort(aliasFileSizeList);
-      // iterating through this list from the end to beginning, trying to find
-      // the big table for mapjoin
-      int idx = aliasFileSizeList.size() - 1;
-      boolean bigAliasFound = false;
-      while (idx >= 0) {
-        AliasFileSizePair pair = aliasFileSizeList.get(idx);
-        String alias = pair.alias;
-        long size = pair.size;
-        idx--;
-        if (!bigAliasFound && aliasToTask.get(alias) != null) {
-          // got the big table
-          bigAliasFound = true;
-          bigTableFileAlias = alias;
-          continue;
-        }
-        smallTablesFileSizeSum += size;
-      }
-
-      // compare with threshold
-      long threshold = HiveConf.getLongVar(conf, HiveConf.ConfVars.HIVESMALLTABLESFILESIZE);
-      if (smallTablesFileSizeSum <= threshold) {
-        return bigTableFileAlias;
-      } else {
-        return null;
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-      return null;
     }
   }
 }

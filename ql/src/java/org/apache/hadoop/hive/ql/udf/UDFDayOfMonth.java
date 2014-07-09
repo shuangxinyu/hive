@@ -25,6 +25,10 @@ import java.util.Date;
 
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDF;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedExpressions;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFDayOfMonthLong;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFDayOfMonthString;
+import org.apache.hadoop.hive.serde2.io.DateWritable;
 import org.apache.hadoop.hive.serde2.io.TimestampWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
@@ -39,11 +43,12 @@ import org.apache.hadoop.io.Text;
     + "'yyyy-MM-dd'.\n"
     + "Example:\n "
     + "  > SELECT _FUNC_('2009-30-07', 1) FROM src LIMIT 1;\n" + "  30")
+@VectorizedExpressions({VectorUDFDayOfMonthLong.class, VectorUDFDayOfMonthString.class})
 public class UDFDayOfMonth extends UDF {
   private final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
   private final Calendar calendar = Calendar.getInstance();
 
-  private IntWritable result = new IntWritable();
+  private final IntWritable result = new IntWritable();
 
   public UDFDayOfMonth() {
   }
@@ -71,6 +76,16 @@ public class UDFDayOfMonth extends UDF {
     } catch (ParseException e) {
       return null;
     }
+  }
+
+  public IntWritable evaluate(DateWritable d) {
+    if (d == null) {
+      return null;
+    }
+
+    calendar.setTime(d.get());
+    result.set(calendar.get(Calendar.DAY_OF_MONTH));
+    return result;
   }
 
   public IntWritable evaluate(TimestampWritable t) {

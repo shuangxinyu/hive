@@ -21,6 +21,8 @@ package org.apache.hive.service.cli;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.hive.service.auth.HiveAuthFactory;
+
 
 /**
  * EmbeddedCLIServiceClient.
@@ -66,13 +68,25 @@ public class EmbeddedCLIServiceClient extends CLIServiceClient {
   }
 
   /* (non-Javadoc)
-   * @see org.apache.hive.service.cli.CLIServiceClient#executeStatement(org.apache.hive.service.cli.SessionHandle, java.lang.String, java.util.Map)
+   * @see org.apache.hive.service.cli.CLIServiceClient#executeStatement(org.apache.hive.service.cli.SessionHandle,
+   *  java.lang.String, java.util.Map)
    */
   @Override
   public OperationHandle executeStatement(SessionHandle sessionHandle, String statement,
       Map<String, String> confOverlay) throws HiveSQLException {
     return cliService.executeStatement(sessionHandle, statement, confOverlay);
   }
+
+  /* (non-Javadoc)
+   * @see org.apache.hive.service.cli.CLIServiceClient#executeStatementAsync(org.apache.hive.service.cli.SessionHandle,
+   *  java.lang.String, java.util.Map)
+   */
+  @Override
+  public OperationHandle executeStatementAsync(SessionHandle sessionHandle, String statement,
+      Map<String, String> confOverlay) throws HiveSQLException {
+    return cliService.executeStatementAsync(sessionHandle, statement, confOverlay);
+  }
+
 
   /* (non-Javadoc)
    * @see org.apache.hive.service.cli.CLIServiceClient#getTypeInfo(org.apache.hive.service.cli.SessionHandle)
@@ -131,7 +145,7 @@ public class EmbeddedCLIServiceClient extends CLIServiceClient {
   @Override
   public OperationHandle getFunctions(SessionHandle sessionHandle,
       String catalogName, String schemaName, String functionName)
-      throws HiveSQLException {
+          throws HiveSQLException {
     return cliService.getFunctions(sessionHandle, catalogName, schemaName, functionName);
   }
 
@@ -139,7 +153,7 @@ public class EmbeddedCLIServiceClient extends CLIServiceClient {
    * @see org.apache.hive.service.cli.CLIServiceClient#getOperationStatus(org.apache.hive.service.cli.OperationHandle)
    */
   @Override
-  public OperationState getOperationStatus(OperationHandle opHandle) throws HiveSQLException {
+  public OperationStatus getOperationStatus(OperationHandle opHandle) throws HiveSQLException {
     return cliService.getOperationStatus(opHandle);
   }
 
@@ -176,4 +190,22 @@ public class EmbeddedCLIServiceClient extends CLIServiceClient {
     return cliService.fetchResults(opHandle, orientation, maxRows);
   }
 
+
+  @Override
+  public String getDelegationToken(SessionHandle sessionHandle, HiveAuthFactory authFactory,
+         String owner, String renewer) throws HiveSQLException {
+    return cliService.getDelegationToken(sessionHandle, authFactory, owner, renewer);
+  }
+
+  @Override
+  public void cancelDelegationToken(SessionHandle sessionHandle, HiveAuthFactory authFactory,
+      String tokenStr) throws HiveSQLException {
+    cliService.cancelDelegationToken(sessionHandle, authFactory, tokenStr);
+  }
+
+  @Override
+  public void renewDelegationToken(SessionHandle sessionHandle, HiveAuthFactory authFactory,
+      String tokenStr) throws HiveSQLException {
+    cliService.renewDelegationToken(sessionHandle, authFactory, tokenStr);
+  }
 }

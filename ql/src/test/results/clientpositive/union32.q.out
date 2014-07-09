@@ -1,10 +1,14 @@
-PREHOOK: query: -- This tests various union queries which have columns on one side of the query
+PREHOOK: query: -- SORT_QUERY_RESULTS
+
+-- This tests various union queries which have columns on one side of the query
 -- being of double type and those on the other side another
 
 CREATE TABLE t1 AS SELECT * FROM src WHERE key < 10
 PREHOOK: type: CREATETABLE_AS_SELECT
 PREHOOK: Input: default@src
-POSTHOOK: query: -- This tests various union queries which have columns on one side of the query
+POSTHOOK: query: -- SORT_QUERY_RESULTS
+
+-- This tests various union queries which have columns on one side of the query
 -- being of double type and those on the other side another
 
 CREATE TABLE t1 AS SELECT * FROM src WHERE key < 10
@@ -34,82 +38,71 @@ UNION ALL
 SELECT CAST(key AS BIGINT) AS key FROM t2) a
 ORDER BY key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  (TOK_QUERY (TOK_FROM (TOK_SUBQUERY (TOK_UNION (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t1))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_DOUBLE (TOK_TABLE_OR_COL key)) key)))) (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t2))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_BIGINT (TOK_TABLE_OR_COL key)) key))))) a)) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR TOK_ALLCOLREF)) (TOK_ORDERBY (TOK_TABSORTCOLNAMEASC (TOK_TABLE_OR_COL key)))))
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
-  Stage-0 is a root stage
+  Stage-0 depends on stages: Stage-1
 
 STAGE PLANS:
   Stage: Stage-1
     Map Reduce
-      Alias -> Map Operator Tree:
-        null-subquery1:a-subquery1:t1 
+      Map Operator Tree:
           TableScan
             alias: t1
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: UDFToDouble(key)
-                    type: double
+              expressions: UDFToDouble(key) (type: double)
               outputColumnNames: _col0
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Union
+                Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
                 Select Operator
-                  expressions:
-                        expr: _col0
-                        type: double
+                  expressions: _col0 (type: double)
                   outputColumnNames: _col0
+                  Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
                   Reduce Output Operator
-                    key expressions:
-                          expr: _col0
-                          type: double
+                    key expressions: _col0 (type: double)
                     sort order: +
-                    tag: -1
-                    value expressions:
-                          expr: _col0
-                          type: double
-        null-subquery2:a-subquery2:t2 
+                    Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
           TableScan
             alias: t2
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: UDFToDouble(UDFToLong(key))
-                    type: double
+              expressions: UDFToDouble(UDFToLong(key)) (type: double)
               outputColumnNames: _col0
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Union
+                Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
                 Select Operator
-                  expressions:
-                        expr: _col0
-                        type: double
+                  expressions: _col0 (type: double)
                   outputColumnNames: _col0
+                  Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
                   Reduce Output Operator
-                    key expressions:
-                          expr: _col0
-                          type: double
+                    key expressions: _col0 (type: double)
                     sort order: +
-                    tag: -1
-                    value expressions:
-                          expr: _col0
-                          type: double
+                    Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
       Reduce Operator Tree:
-        Extract
+        Select Operator
+          expressions: KEY.reducesinkkey0 (type: double)
+          outputColumnNames: _col0
+          Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
-            GlobalTableId: 0
+            Statistics: Num rows: 20 Data size: 140 Basic stats: COMPLETE Column stats: NONE
             table:
                 input format: org.apache.hadoop.mapred.TextInputFormat
                 output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
 
   Stage: Stage-0
     Fetch Operator
       limit: -1
-
+      Processor Tree:
+        ListSink
 
 PREHOOK: query: SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key FROM t1
 UNION ALL
 SELECT CAST(key AS BIGINT) AS key FROM t2) a
-ORDER BY key
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
 PREHOOK: Input: default@t2
@@ -118,7 +111,6 @@ POSTHOOK: query: SELECT * FROM
 (SELECT CAST(key AS DOUBLE) AS key FROM t1
 UNION ALL
 SELECT CAST(key AS BIGINT) AS key FROM t2) a
-ORDER BY key
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t1
 POSTHOOK: Input: default@t2
@@ -149,7 +141,6 @@ SELECT * FROM
 (SELECT CAST(a.key AS BIGINT) AS key FROM t1 a JOIN t2 b ON a.key = b.key
 UNION ALL
 SELECT CAST(key AS DOUBLE) AS key FROM t2) a
-ORDER BY key
 PREHOOK: type: QUERY
 POSTHOOK: query: -- Test union with join on the left
 EXPLAIN
@@ -157,130 +148,106 @@ SELECT * FROM
 (SELECT CAST(a.key AS BIGINT) AS key FROM t1 a JOIN t2 b ON a.key = b.key
 UNION ALL
 SELECT CAST(key AS DOUBLE) AS key FROM t2) a
-ORDER BY key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  (TOK_QUERY (TOK_FROM (TOK_SUBQUERY (TOK_UNION (TOK_QUERY (TOK_FROM (TOK_JOIN (TOK_TABREF (TOK_TABNAME t1) a) (TOK_TABREF (TOK_TABNAME t2) b) (= (. (TOK_TABLE_OR_COL a) key) (. (TOK_TABLE_OR_COL b) key)))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_BIGINT (. (TOK_TABLE_OR_COL a) key)) key)))) (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t2))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_DOUBLE (TOK_TABLE_OR_COL key)) key))))) a)) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR TOK_ALLCOLREF)) (TOK_ORDERBY (TOK_TABSORTCOLNAMEASC (TOK_TABLE_OR_COL key)))))
-
 STAGE DEPENDENCIES:
   Stage-3 is a root stage
   Stage-2 depends on stages: Stage-3
-  Stage-0 is a root stage
+  Stage-0 depends on stages: Stage-2
 
 STAGE PLANS:
   Stage: Stage-3
     Map Reduce
-      Alias -> Map Operator Tree:
-        null-subquery1:a-subquery1:a 
-          TableScan
-            alias: a
-            Reduce Output Operator
-              key expressions:
-                    expr: key
-                    type: string
-              sort order: +
-              Map-reduce partition columns:
-                    expr: key
-                    type: string
-              tag: 0
-              value expressions:
-                    expr: key
-                    type: string
-        null-subquery1:a-subquery1:b 
+      Map Operator Tree:
           TableScan
             alias: b
-            Reduce Output Operator
-              key expressions:
-                    expr: key
-                    type: string
-              sort order: +
-              Map-reduce partition columns:
-                    expr: key
-                    type: string
-              tag: 1
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+            Filter Operator
+              predicate: key is not null (type: boolean)
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+              Reduce Output Operator
+                key expressions: key (type: string)
+                sort order: +
+                Map-reduce partition columns: key (type: string)
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+          TableScan
+            alias: a
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+            Filter Operator
+              predicate: key is not null (type: boolean)
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+              Reduce Output Operator
+                key expressions: key (type: string)
+                sort order: +
+                Map-reduce partition columns: key (type: string)
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
       Reduce Operator Tree:
         Join Operator
           condition map:
                Inner Join 0 to 1
           condition expressions:
-            0 {VALUE._col0}
+            0 {KEY.reducesinkkey0}
             1 
-          handleSkewJoin: false
           outputColumnNames: _col0
+          Statistics: Num rows: 5 Data size: 38 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions:
-                  expr: UDFToDouble(UDFToLong(_col0))
-                  type: double
+            expressions: UDFToDouble(UDFToLong(_col0)) (type: double)
             outputColumnNames: _col0
+            Statistics: Num rows: 5 Data size: 38 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
-              GlobalTableId: 0
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                  serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
   Stage: Stage-2
     Map Reduce
-      Alias -> Map Operator Tree:
-#### A masked pattern was here ####
-          TableScan
-            Union
-              Select Operator
-                expressions:
-                      expr: _col0
-                      type: double
-                outputColumnNames: _col0
-                Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: double
-                  sort order: +
-                  tag: -1
-                  value expressions:
-                        expr: _col0
-                        type: double
-        null-subquery2:a-subquery2:t2 
+      Map Operator Tree:
           TableScan
             alias: t2
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: UDFToDouble(key)
-                    type: double
+              expressions: UDFToDouble(key) (type: double)
               outputColumnNames: _col0
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Union
+                Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
                 Select Operator
-                  expressions:
-                        expr: _col0
-                        type: double
+                  expressions: _col0 (type: double)
                   outputColumnNames: _col0
-                  Reduce Output Operator
-                    key expressions:
-                          expr: _col0
-                          type: double
-                    sort order: +
-                    tag: -1
-                    value expressions:
-                          expr: _col0
-                          type: double
-      Reduce Operator Tree:
-        Extract
-          File Output Operator
-            compressed: false
-            GlobalTableId: 0
-            table:
-                input format: org.apache.hadoop.mapred.TextInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                  Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                  File Output Operator
+                    compressed: false
+                    Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                    table:
+                        input format: org.apache.hadoop.mapred.TextInputFormat
+                        output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                        serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+          TableScan
+            Union
+              Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+              Select Operator
+                expressions: _col0 (type: double)
+                outputColumnNames: _col0
+                Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                File Output Operator
+                  compressed: false
+                  Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                  table:
+                      input format: org.apache.hadoop.mapred.TextInputFormat
+                      output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                      serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
 
   Stage: Stage-0
     Fetch Operator
       limit: -1
-
+      Processor Tree:
+        ListSink
 
 PREHOOK: query: SELECT * FROM 
 (SELECT CAST(a.key AS BIGINT) AS key FROM t1 a JOIN t2 b ON a.key = b.key
 UNION ALL
 SELECT CAST(key AS DOUBLE) AS key FROM t2) a
-ORDER BY key
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
 PREHOOK: Input: default@t2
@@ -289,7 +256,6 @@ POSTHOOK: query: SELECT * FROM
 (SELECT CAST(a.key AS BIGINT) AS key FROM t1 a JOIN t2 b ON a.key = b.key
 UNION ALL
 SELECT CAST(key AS DOUBLE) AS key FROM t2) a
-ORDER BY key
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t1
 POSTHOOK: Input: default@t2
@@ -332,7 +298,6 @@ SELECT * FROM
 (SELECT CAST(key AS DOUBLE) AS key FROM t2
 UNION ALL
 SELECT CAST(a.key AS BIGINT) AS key FROM t1 a JOIN t2 b ON a.key = b.key) a
-ORDER BY key
 PREHOOK: type: QUERY
 POSTHOOK: query: -- Test union with join on the right
 EXPLAIN
@@ -340,130 +305,106 @@ SELECT * FROM
 (SELECT CAST(key AS DOUBLE) AS key FROM t2
 UNION ALL
 SELECT CAST(a.key AS BIGINT) AS key FROM t1 a JOIN t2 b ON a.key = b.key) a
-ORDER BY key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  (TOK_QUERY (TOK_FROM (TOK_SUBQUERY (TOK_UNION (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t2))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_DOUBLE (TOK_TABLE_OR_COL key)) key)))) (TOK_QUERY (TOK_FROM (TOK_JOIN (TOK_TABREF (TOK_TABNAME t1) a) (TOK_TABREF (TOK_TABNAME t2) b) (= (. (TOK_TABLE_OR_COL a) key) (. (TOK_TABLE_OR_COL b) key)))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_BIGINT (. (TOK_TABLE_OR_COL a) key)) key))))) a)) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR TOK_ALLCOLREF)) (TOK_ORDERBY (TOK_TABSORTCOLNAMEASC (TOK_TABLE_OR_COL key)))))
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-2 depends on stages: Stage-1
-  Stage-0 is a root stage
+  Stage-0 depends on stages: Stage-2
 
 STAGE PLANS:
   Stage: Stage-1
     Map Reduce
-      Alias -> Map Operator Tree:
-        null-subquery2:a-subquery2:a 
+      Map Operator Tree:
           TableScan
             alias: a
-            Reduce Output Operator
-              key expressions:
-                    expr: key
-                    type: string
-              sort order: +
-              Map-reduce partition columns:
-                    expr: key
-                    type: string
-              tag: 0
-              value expressions:
-                    expr: key
-                    type: string
-        null-subquery2:a-subquery2:b 
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+            Filter Operator
+              predicate: key is not null (type: boolean)
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+              Reduce Output Operator
+                key expressions: key (type: string)
+                sort order: +
+                Map-reduce partition columns: key (type: string)
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
           TableScan
             alias: b
-            Reduce Output Operator
-              key expressions:
-                    expr: key
-                    type: string
-              sort order: +
-              Map-reduce partition columns:
-                    expr: key
-                    type: string
-              tag: 1
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+            Filter Operator
+              predicate: key is not null (type: boolean)
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+              Reduce Output Operator
+                key expressions: key (type: string)
+                sort order: +
+                Map-reduce partition columns: key (type: string)
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
       Reduce Operator Tree:
         Join Operator
           condition map:
                Inner Join 0 to 1
           condition expressions:
-            0 {VALUE._col0}
+            0 {KEY.reducesinkkey0}
             1 
-          handleSkewJoin: false
           outputColumnNames: _col0
+          Statistics: Num rows: 5 Data size: 38 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions:
-                  expr: UDFToDouble(UDFToLong(_col0))
-                  type: double
+            expressions: UDFToDouble(UDFToLong(_col0)) (type: double)
             outputColumnNames: _col0
+            Statistics: Num rows: 5 Data size: 38 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
-              GlobalTableId: 0
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                  serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
   Stage: Stage-2
     Map Reduce
-      Alias -> Map Operator Tree:
-#### A masked pattern was here ####
+      Map Operator Tree:
           TableScan
             Union
+              Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
               Select Operator
-                expressions:
-                      expr: _col0
-                      type: double
+                expressions: _col0 (type: double)
                 outputColumnNames: _col0
-                Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: double
-                  sort order: +
-                  tag: -1
-                  value expressions:
-                        expr: _col0
-                        type: double
-        null-subquery1:a-subquery1:t2 
+                Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                File Output Operator
+                  compressed: false
+                  Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                  table:
+                      input format: org.apache.hadoop.mapred.TextInputFormat
+                      output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                      serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
           TableScan
             alias: t2
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: UDFToDouble(key)
-                    type: double
+              expressions: UDFToDouble(key) (type: double)
               outputColumnNames: _col0
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Union
+                Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
                 Select Operator
-                  expressions:
-                        expr: _col0
-                        type: double
+                  expressions: _col0 (type: double)
                   outputColumnNames: _col0
-                  Reduce Output Operator
-                    key expressions:
-                          expr: _col0
-                          type: double
-                    sort order: +
-                    tag: -1
-                    value expressions:
-                          expr: _col0
-                          type: double
-      Reduce Operator Tree:
-        Extract
-          File Output Operator
-            compressed: false
-            GlobalTableId: 0
-            table:
-                input format: org.apache.hadoop.mapred.TextInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                  Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                  File Output Operator
+                    compressed: false
+                    Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                    table:
+                        input format: org.apache.hadoop.mapred.TextInputFormat
+                        output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                        serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
 
   Stage: Stage-0
     Fetch Operator
       limit: -1
-
+      Processor Tree:
+        ListSink
 
 PREHOOK: query: SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key FROM t2
 UNION ALL
 SELECT CAST(a.key AS BIGINT) AS key FROM t1 a JOIN t2 b ON a.key = b.key) a
-ORDER BY key
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
 PREHOOK: Input: default@t2
@@ -472,7 +413,6 @@ POSTHOOK: query: SELECT * FROM
 (SELECT CAST(key AS DOUBLE) AS key FROM t2
 UNION ALL
 SELECT CAST(a.key AS BIGINT) AS key FROM t1 a JOIN t2 b ON a.key = b.key) a
-ORDER BY key
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t1
 POSTHOOK: Input: default@t2
@@ -515,7 +455,6 @@ SELECT * FROM
 (SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION ALL
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
-ORDER BY key
 PREHOOK: type: QUERY
 POSTHOOK: query: -- Test union with join on the left selecting multiple columns
 EXPLAIN
@@ -523,145 +462,106 @@ SELECT * FROM
 (SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION ALL
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
-ORDER BY key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  (TOK_QUERY (TOK_FROM (TOK_SUBQUERY (TOK_UNION (TOK_QUERY (TOK_FROM (TOK_JOIN (TOK_TABREF (TOK_TABNAME t1) a) (TOK_TABREF (TOK_TABNAME t2) b) (= (. (TOK_TABLE_OR_COL a) key) (. (TOK_TABLE_OR_COL b) key)))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_BIGINT (. (TOK_TABLE_OR_COL a) key)) key) (TOK_SELEXPR (TOK_FUNCTION TOK_DOUBLE (. (TOK_TABLE_OR_COL b) key)) value)))) (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t2))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_DOUBLE (TOK_TABLE_OR_COL key)) key) (TOK_SELEXPR (TOK_FUNCTION TOK_STRING (TOK_TABLE_OR_COL key)) value))))) a)) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR TOK_ALLCOLREF)) (TOK_ORDERBY (TOK_TABSORTCOLNAMEASC (TOK_TABLE_OR_COL key)))))
-
 STAGE DEPENDENCIES:
   Stage-3 is a root stage
   Stage-2 depends on stages: Stage-3
-  Stage-0 is a root stage
+  Stage-0 depends on stages: Stage-2
 
 STAGE PLANS:
   Stage: Stage-3
     Map Reduce
-      Alias -> Map Operator Tree:
-        null-subquery1:a-subquery1:a 
-          TableScan
-            alias: a
-            Reduce Output Operator
-              key expressions:
-                    expr: key
-                    type: string
-              sort order: +
-              Map-reduce partition columns:
-                    expr: key
-                    type: string
-              tag: 0
-              value expressions:
-                    expr: key
-                    type: string
-        null-subquery1:a-subquery1:b 
+      Map Operator Tree:
           TableScan
             alias: b
-            Reduce Output Operator
-              key expressions:
-                    expr: key
-                    type: string
-              sort order: +
-              Map-reduce partition columns:
-                    expr: key
-                    type: string
-              tag: 1
-              value expressions:
-                    expr: key
-                    type: string
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+            Filter Operator
+              predicate: key is not null (type: boolean)
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+              Reduce Output Operator
+                key expressions: key (type: string)
+                sort order: +
+                Map-reduce partition columns: key (type: string)
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+          TableScan
+            alias: a
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+            Filter Operator
+              predicate: key is not null (type: boolean)
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+              Reduce Output Operator
+                key expressions: key (type: string)
+                sort order: +
+                Map-reduce partition columns: key (type: string)
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
       Reduce Operator Tree:
         Join Operator
           condition map:
                Inner Join 0 to 1
           condition expressions:
-            0 {VALUE._col0}
-            1 {VALUE._col0}
-          handleSkewJoin: false
+            0 {KEY.reducesinkkey0}
+            1 {KEY.reducesinkkey0}
           outputColumnNames: _col0, _col4
+          Statistics: Num rows: 5 Data size: 38 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions:
-                  expr: UDFToDouble(UDFToLong(_col0))
-                  type: double
-                  expr: UDFToString(UDFToDouble(_col4))
-                  type: string
+            expressions: UDFToDouble(UDFToLong(_col0)) (type: double), UDFToString(UDFToDouble(_col4)) (type: string)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 5 Data size: 38 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
-              GlobalTableId: 0
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                  serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
   Stage: Stage-2
     Map Reduce
-      Alias -> Map Operator Tree:
-#### A masked pattern was here ####
-          TableScan
-            Union
-              Select Operator
-                expressions:
-                      expr: _col0
-                      type: double
-                      expr: _col1
-                      type: string
-                outputColumnNames: _col0, _col1
-                Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: double
-                  sort order: +
-                  tag: -1
-                  value expressions:
-                        expr: _col0
-                        type: double
-                        expr: _col1
-                        type: string
-        null-subquery2:a-subquery2:t2 
+      Map Operator Tree:
           TableScan
             alias: t2
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: UDFToDouble(key)
-                    type: double
-                    expr: key
-                    type: string
+              expressions: UDFToDouble(key) (type: double), key (type: string)
               outputColumnNames: _col0, _col1
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Union
+                Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
                 Select Operator
-                  expressions:
-                        expr: _col0
-                        type: double
-                        expr: _col1
-                        type: string
+                  expressions: _col0 (type: double), _col1 (type: string)
                   outputColumnNames: _col0, _col1
-                  Reduce Output Operator
-                    key expressions:
-                          expr: _col0
-                          type: double
-                    sort order: +
-                    tag: -1
-                    value expressions:
-                          expr: _col0
-                          type: double
-                          expr: _col1
-                          type: string
-      Reduce Operator Tree:
-        Extract
-          File Output Operator
-            compressed: false
-            GlobalTableId: 0
-            table:
-                input format: org.apache.hadoop.mapred.TextInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                  Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                  File Output Operator
+                    compressed: false
+                    Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                    table:
+                        input format: org.apache.hadoop.mapred.TextInputFormat
+                        output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                        serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+          TableScan
+            Union
+              Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+              Select Operator
+                expressions: _col0 (type: double), _col1 (type: string)
+                outputColumnNames: _col0, _col1
+                Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                File Output Operator
+                  compressed: false
+                  Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                  table:
+                      input format: org.apache.hadoop.mapred.TextInputFormat
+                      output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                      serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
 
   Stage: Stage-0
     Fetch Operator
       limit: -1
-
+      Processor Tree:
+        ListSink
 
 PREHOOK: query: SELECT * FROM 
 (SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION ALL
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
-ORDER BY key
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
 PREHOOK: Input: default@t2
@@ -670,7 +570,6 @@ POSTHOOK: query: SELECT * FROM
 (SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION ALL
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
-ORDER BY key
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t1
 POSTHOOK: Input: default@t2
@@ -687,33 +586,32 @@ POSTHOOK: Input: default@t2
 0.0	0.0
 0.0	0.0
 0.0	0.0
-2.0	2.0
 2.0	2
+2.0	2.0
 4.0	4
 4.0	4.0
-5.0	5.0
-5.0	5.0
-5.0	5.0
-5.0	5.0
-5.0	5.0
-5.0	5.0
-5.0	5.0
-5.0	5.0
-5.0	5.0
 5.0	5
 5.0	5
 5.0	5
+5.0	5.0
+5.0	5.0
+5.0	5.0
+5.0	5.0
+5.0	5.0
+5.0	5.0
+5.0	5.0
+5.0	5.0
+5.0	5.0
 8.0	8
 8.0	8.0
-9.0	9.0
 9.0	9
+9.0	9.0
 PREHOOK: query: -- Test union with join on the right selecting multiple columns
 EXPLAIN
 SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION ALL
 SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
-ORDER BY key
 PREHOOK: type: QUERY
 POSTHOOK: query: -- Test union with join on the right selecting multiple columns
 EXPLAIN
@@ -721,145 +619,106 @@ SELECT * FROM
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION ALL
 SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
-ORDER BY key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  (TOK_QUERY (TOK_FROM (TOK_SUBQUERY (TOK_UNION (TOK_QUERY (TOK_FROM (TOK_TABREF (TOK_TABNAME t2))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_DOUBLE (TOK_TABLE_OR_COL key)) key) (TOK_SELEXPR (TOK_FUNCTION TOK_STRING (TOK_TABLE_OR_COL key)) value)))) (TOK_QUERY (TOK_FROM (TOK_JOIN (TOK_TABREF (TOK_TABNAME t1) a) (TOK_TABREF (TOK_TABNAME t2) b) (= (. (TOK_TABLE_OR_COL a) key) (. (TOK_TABLE_OR_COL b) key)))) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR (TOK_FUNCTION TOK_BIGINT (. (TOK_TABLE_OR_COL a) key)) key) (TOK_SELEXPR (TOK_FUNCTION TOK_DOUBLE (. (TOK_TABLE_OR_COL b) key)) value))))) a)) (TOK_INSERT (TOK_DESTINATION (TOK_DIR TOK_TMP_FILE)) (TOK_SELECT (TOK_SELEXPR TOK_ALLCOLREF)) (TOK_ORDERBY (TOK_TABSORTCOLNAMEASC (TOK_TABLE_OR_COL key)))))
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-2 depends on stages: Stage-1
-  Stage-0 is a root stage
+  Stage-0 depends on stages: Stage-2
 
 STAGE PLANS:
   Stage: Stage-1
     Map Reduce
-      Alias -> Map Operator Tree:
-        null-subquery2:a-subquery2:a 
+      Map Operator Tree:
           TableScan
             alias: a
-            Reduce Output Operator
-              key expressions:
-                    expr: key
-                    type: string
-              sort order: +
-              Map-reduce partition columns:
-                    expr: key
-                    type: string
-              tag: 0
-              value expressions:
-                    expr: key
-                    type: string
-        null-subquery2:a-subquery2:b 
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+            Filter Operator
+              predicate: key is not null (type: boolean)
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+              Reduce Output Operator
+                key expressions: key (type: string)
+                sort order: +
+                Map-reduce partition columns: key (type: string)
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
           TableScan
             alias: b
-            Reduce Output Operator
-              key expressions:
-                    expr: key
-                    type: string
-              sort order: +
-              Map-reduce partition columns:
-                    expr: key
-                    type: string
-              tag: 1
-              value expressions:
-                    expr: key
-                    type: string
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
+            Filter Operator
+              predicate: key is not null (type: boolean)
+              Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
+              Reduce Output Operator
+                key expressions: key (type: string)
+                sort order: +
+                Map-reduce partition columns: key (type: string)
+                Statistics: Num rows: 5 Data size: 35 Basic stats: COMPLETE Column stats: NONE
       Reduce Operator Tree:
         Join Operator
           condition map:
                Inner Join 0 to 1
           condition expressions:
-            0 {VALUE._col0}
-            1 {VALUE._col0}
-          handleSkewJoin: false
+            0 {KEY.reducesinkkey0}
+            1 {KEY.reducesinkkey0}
           outputColumnNames: _col0, _col4
+          Statistics: Num rows: 5 Data size: 38 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions:
-                  expr: UDFToDouble(UDFToLong(_col0))
-                  type: double
-                  expr: UDFToDouble(_col4)
-                  type: double
+            expressions: UDFToDouble(UDFToLong(_col0)) (type: double), UDFToDouble(_col4) (type: double)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 5 Data size: 38 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
-              GlobalTableId: 0
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                  serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
   Stage: Stage-2
     Map Reduce
-      Alias -> Map Operator Tree:
-#### A masked pattern was here ####
+      Map Operator Tree:
           TableScan
             Union
+              Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
               Select Operator
-                expressions:
-                      expr: _col0
-                      type: double
-                      expr: _col1
-                      type: double
+                expressions: _col0 (type: double), _col1 (type: double)
                 outputColumnNames: _col0, _col1
-                Reduce Output Operator
-                  key expressions:
-                        expr: _col0
-                        type: double
-                  sort order: +
-                  tag: -1
-                  value expressions:
-                        expr: _col0
-                        type: double
-                        expr: _col1
-                        type: double
-        null-subquery1:a-subquery1:t2 
+                Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                File Output Operator
+                  compressed: false
+                  Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                  table:
+                      input format: org.apache.hadoop.mapred.TextInputFormat
+                      output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                      serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
           TableScan
             alias: t2
+            Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions:
-                    expr: UDFToDouble(key)
-                    type: double
-                    expr: UDFToDouble(key)
-                    type: double
+              expressions: UDFToDouble(key) (type: double), UDFToDouble(key) (type: double)
               outputColumnNames: _col0, _col1
+              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Union
+                Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
                 Select Operator
-                  expressions:
-                        expr: _col0
-                        type: double
-                        expr: _col1
-                        type: double
+                  expressions: _col0 (type: double), _col1 (type: double)
                   outputColumnNames: _col0, _col1
-                  Reduce Output Operator
-                    key expressions:
-                          expr: _col0
-                          type: double
-                    sort order: +
-                    tag: -1
-                    value expressions:
-                          expr: _col0
-                          type: double
-                          expr: _col1
-                          type: double
-      Reduce Operator Tree:
-        Extract
-          File Output Operator
-            compressed: false
-            GlobalTableId: 0
-            table:
-                input format: org.apache.hadoop.mapred.TextInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                  Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                  File Output Operator
+                    compressed: false
+                    Statistics: Num rows: 15 Data size: 108 Basic stats: COMPLETE Column stats: NONE
+                    table:
+                        input format: org.apache.hadoop.mapred.TextInputFormat
+                        output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                        serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
 
   Stage: Stage-0
     Fetch Operator
       limit: -1
-
+      Processor Tree:
+        ListSink
 
 PREHOOK: query: SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION ALL
 SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
-ORDER BY key
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
 PREHOOK: Input: default@t2
@@ -868,7 +727,6 @@ POSTHOOK: query: SELECT * FROM
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION ALL
 SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
-ORDER BY key
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t1
 POSTHOOK: Input: default@t2

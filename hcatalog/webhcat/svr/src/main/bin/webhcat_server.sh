@@ -38,8 +38,9 @@ function real_script_name() {
 }
 
 function usage() {
-        echo "usage: $0 [start|stop|foreground]"
+        echo "usage: $0 [start|startDebug|stop|foreground]"
         echo "  start           Start the Webhcat Server"
+        echo "  startDebug      Start the Webhcat Server listening for debugger on port 5005"
         echo "  stop            Stop the Webhcat Server"
         echo "  foreground      Run the Webhcat Server in the foreground"
         exit 1
@@ -58,7 +59,7 @@ function log() {
 
 # return(print) the webhcat jar
 function find_jar_path() {
-         for dir in "." "build" "share/webhcat/svr/"; do
+         for dir in "." "build" "share/webhcat/svr/lib"; do
                 if (( `ls -1 $base_dir/$dir/$WEBHCAT_JAR 2>/dev/null| wc -l ` > 1 )) ; then
                        echo "Error:  found more than one hcatalog jar in $base_dir/$dir/$WEBHCAT_JAR"
                        exit 1
@@ -121,7 +122,7 @@ function check_pid() {
 
 # Start the webhcat server in the foreground
 function foreground_webhcat() {
-        $start_cmd
+        exec $start_cmd
 }
 
 # Start the webhcat server in the background.  Record the PID for
@@ -211,24 +212,22 @@ else
 fi
 
 if [[ -z "$WEBHCAT_LOG4J" ]]; then
-        if [[ -f "$base_dir/conf/webhcat-log4j.properties" ]]; then
-                WEBHCAT_LOG4J="$base_dir/conf/webhcat-log4j.properties";
-        elif [[ -f "$base_dir/conf/webhcat-log4j.properties" ]]; then
-                WEBHCAT_LOG4J="$base_dir/conf/webhcat-log4j.properties";
-        else
-                WEBHCAT_LOG4J="webhcat-log4j.properties";
-        fi
+  WEBHCAT_LOG4J="file://$base_dir/etc/webhcat/webhcat-log4j.properties";
 fi
 
 export HADOOP_USER_CLASSPATH_FIRST=true
 export HADOOP_OPTS="${HADOOP_OPTS} -Dwebhcat.log.dir=$WEBHCAT_LOG_DIR -Dlog4j.configuration=$WEBHCAT_LOG4J"
 
-start_cmd="$HADOOP_PREFIX/bin/hadoop jar $JAR org.apache.hcatalog.templeton.Main  "
+start_cmd="$HADOOP_PREFIX/bin/hadoop jar $JAR org.apache.hive.hcatalog.templeton.Main  "
 
 
 cmd=$1
 case $cmd in
         start)
+                start_webhcat
+                ;;
+        startDebug)
+                export HADOOP_OPTS="${HADOOP_OPTS} -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"
                 start_webhcat
                 ;;
         stop)

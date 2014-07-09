@@ -18,54 +18,60 @@
 
 package org.apache.hadoop.hive.ql.plan;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Stack;
 
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluator;
+import org.apache.hadoop.hive.ql.exec.PTFPartition;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
-import org.apache.hadoop.hive.ql.parse.PTFTranslator.LeadLagInfo;
+import org.apache.hadoop.hive.ql.parse.LeadLagInfo;
 import org.apache.hadoop.hive.ql.parse.WindowingExprNodeEvaluatorFactory;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.BoundaryDef;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.PTFExpressionDef;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.PTFInputDef;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.PTFQueryInputDef;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.PartitionedTableFunctionDef;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.ShapeDetails;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.ValueBoundaryDef;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.WindowExpressionDef;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.WindowFrameDef;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.WindowFunctionDef;
-import org.apache.hadoop.hive.ql.plan.PTFDesc.WindowTableFunctionDef;
+import org.apache.hadoop.hive.ql.plan.ptf.BoundaryDef;
+import org.apache.hadoop.hive.ql.plan.ptf.PTFExpressionDef;
+import org.apache.hadoop.hive.ql.plan.ptf.PTFInputDef;
+import org.apache.hadoop.hive.ql.plan.ptf.PTFQueryInputDef;
+import org.apache.hadoop.hive.ql.plan.ptf.PartitionedTableFunctionDef;
+import org.apache.hadoop.hive.ql.plan.ptf.ShapeDetails;
+import org.apache.hadoop.hive.ql.plan.ptf.ValueBoundaryDef;
+import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
+import org.apache.hadoop.hive.ql.plan.ptf.WindowFunctionDef;
+import org.apache.hadoop.hive.ql.plan.ptf.WindowTableFunctionDef;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFEvaluator;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFLeadLag;
 import org.apache.hadoop.hive.ql.udf.ptf.TableFunctionEvaluator;
 import org.apache.hadoop.hive.ql.udf.ptf.TableFunctionResolver;
 import org.apache.hadoop.hive.ql.udf.ptf.WindowingTableFunction.WindowingTableFunctionResolver;
 import org.apache.hadoop.hive.serde2.SerDe;
-import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ListObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
-import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
+import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.util.ReflectionUtils;
 
+@SuppressWarnings("deprecation")
 public class PTFDeserializer {
 
   PTFDesc ptfDesc;
   StructObjectInspector inputOI;
-  HiveConf hConf;
+  Configuration hConf;
   LeadLagInfo llInfo;
 
-  public PTFDeserializer(PTFDesc ptfDesc, StructObjectInspector inputOI, HiveConf hConf) {
+  public PTFDeserializer(PTFDesc ptfDesc, StructObjectInspector inputOI, Configuration hConf) {
     super();
     this.ptfDesc = ptfDesc;
+    ptfDesc.setCfg(hConf);
     this.inputOI = inputOI;
     this.hConf = hConf;
     llInfo = new LeadLagInfo();
@@ -73,25 +79,25 @@ public class PTFDeserializer {
   }
 
   public void initializePTFChain(PartitionedTableFunctionDef tblFnDef) throws HiveException {
-    Stack<PTFInputDef> ptfChain = new Stack<PTFInputDef>();
+    Deque<PTFInputDef> ptfChain = new ArrayDeque<PTFInputDef>();
     PTFInputDef currentDef = tblFnDef;
-    while (currentDef != null ) {
+    while (currentDef != null) {
       ptfChain.push(currentDef);
       currentDef = currentDef.getInput();
     }
 
-    while ( !ptfChain.isEmpty() ) {
+    while (!ptfChain.isEmpty()) {
       currentDef = ptfChain.pop();
-      if ( currentDef instanceof PTFQueryInputDef) {
-        initialize((PTFQueryInputDef)currentDef);
-      }
-      else if ( currentDef instanceof WindowTableFunctionDef) {
-        initializeWindowing((WindowTableFunctionDef)currentDef);
-      }
-      else {
-        initialize((PartitionedTableFunctionDef)currentDef);
+      if (currentDef instanceof PTFQueryInputDef) {
+        initialize((PTFQueryInputDef) currentDef, inputOI);
+      } else if (currentDef instanceof WindowTableFunctionDef) {
+        initializeWindowing((WindowTableFunctionDef) currentDef);
+      } else {
+        initialize((PartitionedTableFunctionDef) currentDef);
       }
     }
+
+    PTFDeserializer.alterOutputOIForStreaming(ptfDesc);
   }
 
   public void initializeWindowing(WindowTableFunctionDef def) throws HiveException {
@@ -101,8 +107,6 @@ public class PTFDeserializer {
      * 1. setup resolve, make connections
      */
     TableFunctionEvaluator tEval = def.getTFunction();
-    /*WindowingTableFunctionResolver tResolver = (WindowingTableFunctionResolver)
-        FunctionRegistry.getTableFunctionResolver(def.getName());*/
     WindowingTableFunctionResolver tResolver =
         (WindowingTableFunctionResolver) constructResolver(def.getResolverClassName());
     tResolver.initialize(ptfDesc, def, tEval);
@@ -111,73 +115,42 @@ public class PTFDeserializer {
     /*
      * 2. initialize WFns.
      */
-    if ( def.getWindowFunctions() != null ) {
-      for(WindowFunctionDef wFnDef : def.getWindowFunctions() ) {
-
-        if ( wFnDef.getArgs() != null ) {
-          for(PTFExpressionDef arg : wFnDef.getArgs()) {
-            initialize(arg, inpShape);
-          }
+    for (WindowFunctionDef wFnDef : def.getWindowFunctions()) {
+      if (wFnDef.getArgs() != null) {
+        for (PTFExpressionDef arg : wFnDef.getArgs()) {
+          initialize(arg, inpShape);
         }
 
-        if ( wFnDef.getWindowFrame() != null ) {
-          WindowFrameDef wFrmDef = wFnDef.getWindowFrame();
-          initialize(wFrmDef.getStart(), inpShape);
-          initialize(wFrmDef.getEnd(), inpShape);
-        }
-        setupWdwFnEvaluator(wFnDef);
       }
-      ArrayList<String> aliases = new ArrayList<String>();
-      ArrayList<ObjectInspector> fieldOIs = new ArrayList<ObjectInspector>();
-      for(WindowFunctionDef wFnDef : def.getWindowFunctions()) {
-        aliases.add(wFnDef.getAlias());
-        if ( wFnDef.isPivotResult() ) {
-          fieldOIs.add(((ListObjectInspector)wFnDef.getOI()).getListElementObjectInspector());
-        } else {
-          fieldOIs.add(wFnDef.getOI());
-        }
+      if (wFnDef.getWindowFrame() != null) {
+        WindowFrameDef wFrmDef = wFnDef.getWindowFrame();
+        initialize(wFrmDef.getStart(), inpShape);
+        initialize(wFrmDef.getEnd(), inpShape);
       }
-      PTFDeserializer.addInputColumnsToList(inpShape, aliases, fieldOIs);
-      StructObjectInspector wdwOutOI = ObjectInspectorFactory.getStandardStructObjectInspector(
-          aliases, fieldOIs);
-      tResolver.setWdwProcessingOutputOI(wdwOutOI);
-      initialize(def.getOutputFromWdwFnProcessing());
+      setupWdwFnEvaluator(wFnDef);
     }
-    else {
-      def.setOutputFromWdwFnProcessing(inpShape);
-    }
-
-    inpShape = def.getOutputFromWdwFnProcessing();
-
-    /*
-     * 3. initialize WExprs. + having clause
-     */
-    if ( def.getWindowExpressions() != null ) {
-      for(WindowExpressionDef wEDef : def.getWindowExpressions()) {
-        initialize(wEDef, inpShape);
+    ArrayList<String> aliases = new ArrayList<String>();
+    ArrayList<ObjectInspector> fieldOIs = new ArrayList<ObjectInspector>();
+    for (WindowFunctionDef wFnDef : def.getWindowFunctions()) {
+      aliases.add(wFnDef.getAlias());
+      if (wFnDef.isPivotResult()) {
+        fieldOIs.add(((ListObjectInspector) wFnDef.getOI()).getListElementObjectInspector());
+      } else {
+        fieldOIs.add(wFnDef.getOI());
       }
     }
 
-    /*
-     * 4. give Evaluator chance to setup for Output execution; setup Output shape.
-     */
-    initialize(def.getOutputShape());
+    PTFDeserializer.addInputColumnsToList(inpShape, aliases, fieldOIs);
+    StructObjectInspector wdwOutOI = ObjectInspectorFactory.getStandardStructObjectInspector(
+        aliases, fieldOIs);
+    tResolver.setWdwProcessingOutputOI(wdwOutOI);
+    initialize(def.getOutputShape(), wdwOutOI);
     tResolver.initializeOutputOI();
-
-    /*
-     * If we have windowExpressions then we convert to Std. Object to process;
-     * we just stream these rows; no need to put in an output Partition.
-     */
-    if ( def.getWindowExpressions().size() > 0  ) {
-      StructObjectInspector oi = (StructObjectInspector)
-          ObjectInspectorUtils.getStandardObjectInspector(def.getOutputShape().getOI());
-      def.getOutputShape().setOI(oi);
-    }
   }
 
-  protected void initialize(PTFQueryInputDef def) throws HiveException {
+  protected void initialize(PTFQueryInputDef def, StructObjectInspector OI) throws HiveException {
     ShapeDetails outShape = def.getOutputShape();
-    initialize(outShape);
+    initialize(outShape, OI);
   }
 
   protected void initialize(PartitionedTableFunctionDef def) throws HiveException {
@@ -186,8 +159,8 @@ public class PTFDeserializer {
     /*
      * 1. initialize args
      */
-    if (def.getArgs() != null ) {
-      for(PTFExpressionDef arg : def.getArgs()) {
+    if (def.getArgs() != null) {
+      for (PTFExpressionDef arg : def.getArgs()) {
         initialize(arg, inpShape);
       }
     }
@@ -196,19 +169,17 @@ public class PTFDeserializer {
      * 2. setup resolve, make connections
      */
     TableFunctionEvaluator tEval = def.getTFunction();
-    //TableFunctionResolver tResolver = FunctionRegistry.getTableFunctionResolver(def.getName());
+    // TableFunctionResolver tResolver = FunctionRegistry.getTableFunctionResolver(def.getName());
     TableFunctionResolver tResolver = constructResolver(def.getResolverClassName());
     tResolver.initialize(ptfDesc, def, tEval);
 
     /*
      * 3. give Evaluator chance to setup for RawInput execution; setup RawInput shape
      */
-    if (tEval.isTransformsRawInput())
-    {
+    if (tEval.isTransformsRawInput()) {
       tResolver.initializeRawInputOI();
-      initialize(def.getRawInputShape());
-    }
-    else {
+      initialize(def.getRawInputShape(), tEval.getRawInputOI());
+    } else {
       def.setRawInputShape(inpShape);
     }
 
@@ -218,13 +189,12 @@ public class PTFDeserializer {
      * 4. give Evaluator chance to setup for Output execution; setup Output shape.
      */
     tResolver.initializeOutputOI();
-    initialize(def.getOutputShape());
+    initialize(def.getOutputShape(), tEval.getOutputOI());
   }
 
-  static void setupWdwFnEvaluator(WindowFunctionDef def) throws HiveException
-  {
-    ArrayList<PTFExpressionDef> args = def.getArgs();
-    ArrayList<ObjectInspector> argOIs = new ArrayList<ObjectInspector>();
+  static void setupWdwFnEvaluator(WindowFunctionDef def) throws HiveException {
+    List<PTFExpressionDef> args = def.getArgs();
+    List<ObjectInspector> argOIs = new ArrayList<ObjectInspector>();
     ObjectInspector[] funcArgOIs = null;
 
     if (args != null) {
@@ -242,7 +212,7 @@ public class PTFDeserializer {
   }
 
   protected void initialize(BoundaryDef def, ShapeDetails inpShape) throws HiveException {
-    if ( def instanceof ValueBoundaryDef ) {
+    if (def instanceof ValueBoundaryDef) {
       ValueBoundaryDef vDef = (ValueBoundaryDef) def;
       initialize(vDef.getExpressionDef(), inpShape);
     }
@@ -259,8 +229,7 @@ public class PTFDeserializer {
   private ObjectInspector initExprNodeEvaluator(ExprNodeEvaluator exprEval,
       ExprNodeDesc exprNode,
       ShapeDetails inpShape)
-      throws HiveException
-  {
+      throws HiveException {
     ObjectInspector outOI;
     outOI = exprEval.initialize(inpShape.getOI());
 
@@ -271,10 +240,8 @@ public class PTFDeserializer {
      * evaluator on the LLUDF instance.
      */
     List<ExprNodeGenericFuncDesc> llFuncExprs = llInfo.getLLFuncExprsInTopExpr(exprNode);
-    if (llFuncExprs != null)
-    {
-      for (ExprNodeGenericFuncDesc llFuncExpr : llFuncExprs)
-      {
+    if (llFuncExprs != null) {
+      for (ExprNodeGenericFuncDesc llFuncExpr : llFuncExprs) {
         ExprNodeDesc firstArg = llFuncExpr.getChildren().get(0);
         ExprNodeEvaluator dupExprEval = WindowingExprNodeEvaluatorFactory.get(llInfo, firstArg);
         dupExprEval.initialize(inpShape.getOI());
@@ -286,21 +253,22 @@ public class PTFDeserializer {
     return outOI;
   }
 
-  protected void initialize(ShapeDetails shp) throws HiveException {
+  protected void initialize(ShapeDetails shp, StructObjectInspector OI) throws HiveException {
     String serdeClassName = shp.getSerdeClassName();
     Properties serDeProps = new Properties();
-    Map<String, String> serdePropsMap = shp.getSerdeProps();
+    Map<String, String> serdePropsMap = new LinkedHashMap<String, String>();
+    addOIPropertiestoSerDePropsMap(OI, serdePropsMap);
     for (String serdeName : serdePropsMap.keySet()) {
       serDeProps.setProperty(serdeName, serdePropsMap.get(serdeName));
     }
     try {
-      SerDe serDe = (SerDe) SerDeUtils.lookupDeserializer(serdeClassName);
-      serDe.initialize(hConf, serDeProps);
+      SerDe serDe =  ReflectionUtils.newInstance(hConf.getClassByName(serdeClassName).
+          asSubclass(SerDe.class), hConf);
+      SerDeUtils.initializeSerDe(serDe, hConf, serDeProps, null);
       shp.setSerde(serDe);
-      shp.setOI((StructObjectInspector) serDe.getObjectInspector());
-    }
-    catch (SerDeException se)
-    {
+      StructObjectInspector outOI = PTFPartition.setupPartitionOutputOI(serDe, OI);
+      shp.setOI(outOI);
+    } catch (Exception se) {
       throw new HiveException(se);
     }
   }
@@ -320,11 +288,62 @@ public class PTFDeserializer {
     try {
       @SuppressWarnings("unchecked")
       Class<? extends TableFunctionResolver> rCls = (Class<? extends TableFunctionResolver>)
-        Class.forName(className);
-      return (TableFunctionResolver) ReflectionUtils.newInstance(rCls, null);
-    }
-    catch(Exception e) {
+          Class.forName(className);
+      return ReflectionUtils.newInstance(rCls, null);
+    } catch (Exception e) {
       throw new HiveException(e);
+    }
+  }
+
+  @SuppressWarnings({"unchecked"})
+  public static void addOIPropertiestoSerDePropsMap(StructObjectInspector OI,
+      Map<String, String> serdePropsMap) {
+
+    if (serdePropsMap == null) {
+      return;
+    }
+
+    ArrayList<? extends Object>[] tInfo = getTypeMap(OI);
+
+    ArrayList<String> columnNames = (ArrayList<String>) tInfo[0];
+    ArrayList<TypeInfo> fields = (ArrayList<TypeInfo>) tInfo[1];
+    StringBuilder cNames = new StringBuilder();
+    StringBuilder cTypes = new StringBuilder();
+
+    for (int i = 0; i < fields.size(); i++)
+    {
+      cNames.append(i > 0 ? "," : "");
+      cTypes.append(i > 0 ? "," : "");
+      cNames.append(columnNames.get(i));
+      cTypes.append(fields.get(i).getTypeName());
+    }
+
+    serdePropsMap.put(org.apache.hadoop.hive.serde.serdeConstants.LIST_COLUMNS,
+        cNames.toString());
+    serdePropsMap.put(org.apache.hadoop.hive.serde.serdeConstants.LIST_COLUMN_TYPES,
+        cTypes.toString());
+  }
+
+  private static ArrayList<? extends Object>[] getTypeMap(
+      StructObjectInspector oi) {
+    StructTypeInfo t = (StructTypeInfo) TypeInfoUtils
+        .getTypeInfoFromObjectInspector(oi);
+    ArrayList<String> fnames = t.getAllStructFieldNames();
+    ArrayList<TypeInfo> fields = t.getAllStructFieldTypeInfos();
+    return new ArrayList<?>[]
+    {fnames, fields};
+  }
+
+  /*
+   * If the final PTF in a PTFChain can stream its output, then set the OI of its OutputShape
+   * to the OI returned by the TableFunctionEvaluator.
+   */
+  public static void alterOutputOIForStreaming(PTFDesc ptfDesc) {
+    PartitionedTableFunctionDef tDef = ptfDesc.getFuncDef();
+    TableFunctionEvaluator tEval = tDef.getTFunction();
+
+    if ( tEval.canIterateOutput() ) {
+      tDef.getOutputShape().setOI(tEval.getOutputOI());
     }
   }
 

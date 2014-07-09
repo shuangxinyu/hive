@@ -18,30 +18,35 @@
 
 package org.apache.hadoop.hive.ql;
 
+import org.antlr.runtime.tree.Tree;
+import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.ql.metadata.HiveUtils;
+import org.apache.hadoop.hive.ql.parse.ASTNode;
+import org.apache.hadoop.hive.ql.parse.ASTNodeOrigin;
+
 import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.antlr.runtime.tree.Tree;
-import org.apache.hadoop.hive.ql.metadata.HiveUtils;
-import org.apache.hadoop.hive.ql.parse.ASTNode;
-import org.apache.hadoop.hive.ql.parse.ASTNodeOrigin;
-
 /**
  * List of all error messages.
  * This list contains both compile time and run-time errors.
- **/
+ *
+ * This class supports parametrized messages such as (@link #TRUNCATE_FOR_NON_MANAGED_TABLE}.  These are
+ * preferable over un-parametrized ones where arbitrary String is appended to the end of the message,
+ * for example {@link #getMsg(String)} and {@link #INVALID_TABLE}.
+ */
 
 public enum ErrorMsg {
   // The error codes are Hive-specific and partitioned into the following ranges:
-  // 10000 to 19999: Errors occuring during semantic analysis and compilation of the query.
+  // 10000 to 19999: Errors occurring during semantic analysis and compilation of the query.
   // 20000 to 29999: Runtime errors where Hive believes that retries are unlikely to succeed.
   // 30000 to 39999: Runtime errors which Hive thinks may be transient and retrying may succeed.
   // 40000 to 49999: Errors where Hive is unable to advise about retries.
   // In addition to the error code, ErrorMsg also has a SQLState field.
-  // SQLStates are taken from Section 12.5 of ISO-9075.
+  // SQLStates are taken from Section 22.1 of ISO-9075.
   // See http://www.contrib.andrew.cmu.edu/~shadow/sql/sql1992.txt
   // Most will just rollup to the generic syntax error state of 42000, but
   // specific errors can override the that state.
@@ -49,6 +54,7 @@ public enum ErrorMsg {
   // http://dev.mysql.com/doc/refman/5.0/en/connector-j-reference-error-sqlstates.html
   GENERIC_ERROR(40000, "Exception while processing"),
 
+  //========================== 10000 range starts here ========================//
   INVALID_TABLE(10001, "Table not found", "42S02"),
   INVALID_COLUMN(10002, "Invalid column reference"),
   INVALID_INDEX(10003, "Invalid index"),
@@ -69,7 +75,6 @@ public enum ErrorMsg {
   INVALID_JOIN_CONDITION_2(10018, "Neither left nor right aliases encountered in JOIN"),
   INVALID_JOIN_CONDITION_3(10019, "OR not supported in JOIN currently"),
   INVALID_TRANSFORM(10020, "TRANSFORM with other SELECT columns not supported"),
-  DUPLICATE_GROUPBY_KEY(10021, "Repeated key in GROUP BY"),
   UNSUPPORTED_MULTIPLE_DISTINCTS(10022, "DISTINCT on different columns not supported" +
       " with skew in data"),
   NO_SUBQUERY_ALIAS(10023, "No alias for subquery"),
@@ -140,7 +145,7 @@ public enum ErrorMsg {
   COLUMN_ALIAS_ALREADY_EXISTS(10074, "Column alias already exists:", "42S02"),
   UDTF_MULTIPLE_EXPR(10075, "Only a single expression in the SELECT clause is "
       + "supported with UDTF's"),
-  UDTF_REQUIRE_AS(10076, "UDTF's require an AS clause"),
+  @Deprecated UDTF_REQUIRE_AS(10076, "UDTF's require an AS clause"),
   UDTF_NO_GROUP_BY(10077, "GROUP BY is not supported with a UDTF in the SELECT clause"),
   UDTF_NO_SORT_BY(10078, "SORT BY is not supported with a UDTF in the SELECT clause"),
   UDTF_NO_CLUSTER_BY(10079, "CLUSTER BY is not supported with a UDTF in the SELECT clause"),
@@ -168,8 +173,8 @@ public enum ErrorMsg {
   DYNAMIC_PARTITION_STRICT_MODE(10096, "Dynamic partition strict mode requires at least one "
       + "static partition column. To turn this off set hive.exec.dynamic.partition.mode=nonstrict"),
   NONEXISTPARTCOL(10098, "Non-Partition column appears in the partition specification: "),
-  UNSUPPORTED_TYPE(10099, "DATE and DATETIME types aren't supported yet. Please use "
-      + "TIMESTAMP instead"),
+  UNSUPPORTED_TYPE(10099, "DATETIME type isn't supported yet. Please use "
+      + "DATE or TIMESTAMP instead"),
   CREATE_NON_NATIVE_AS(10100, "CREATE TABLE AS SELECT cannot be used for a non-native table"),
   LOAD_INTO_NON_NATIVE(10101, "A non-native table cannot be used as target for LOAD"),
   LOCKMGR_NOT_SPECIFIED(10102, "Lock manager not specified correctly, set hive.lock.manager"),
@@ -239,7 +244,7 @@ public enum ErrorMsg {
   JOINNODE_OUTERJOIN_MORETHAN_16(10142, "Single join node containing outer join(s) " +
       "cannot have more than 16 aliases"),
 
-  INVALID_JDO_FILTER_EXPRESSION(10043, "Invalid expression for JDO filter"),
+  INVALID_JDO_FILTER_EXPRESSION(10143, "Invalid expression for JDO filter"),
 
   SHOW_CREATETABLE_INDEX(10144, "SHOW CREATE TABLE does not support tables of type INDEX_TABLE."),
   ALTER_BUCKETNUM_NONBUCKETIZED_TBL(10145, "Table is not bucketized."),
@@ -301,7 +306,7 @@ public enum ErrorMsg {
     "Cannot ALTER VIEW AS SELECT if view currently does not exist\n"),
   REPLACE_VIEW_WITH_PARTITION(10217,
     "Cannot replace a view with CREATE VIEW or REPLACE VIEW or " +
-    "ALTER VIEW AS SELECT if the view has paritions\n"),
+    "ALTER VIEW AS SELECT if the view has partitions\n"),
   EXISTING_TABLE_IS_NOT_VIEW(10218,
     "Existing table is not a view\n"),
   NO_SUPPORTED_ORDERBY_ALLCOLREF_POS(10219,
@@ -338,7 +343,64 @@ public enum ErrorMsg {
             + "fails to construct aggregation for the partition "),
   ANALYZE_TABLE_PARTIALSCAN_AUTOGATHER(10233, "Analyze partialscan is not allowed " +
             "if hive.stats.autogather is set to false"),
+  PARTITION_VALUE_NOT_CONTINUOUS(10234, "Parition values specifed are not continuous." +
+            " A subpartition value is specified without specififying the parent partition's value"),
+  TABLES_INCOMPATIBLE_SCHEMAS(10235, "Tables have incompatible schemas and their partitions " +
+            " cannot be exchanged."),
 
+  TRUNCATE_COLUMN_INDEXED_TABLE(10236, "Can not truncate columns from table with indexes"),
+  TRUNCATE_COLUMN_NOT_RC(10237, "Only RCFileFormat supports column truncation."),
+  TRUNCATE_COLUMN_ARCHIVED(10238, "Column truncation cannot be performed on archived partitions."),
+  TRUNCATE_BUCKETED_COLUMN(10239,
+      "A column on which a partition/table is bucketed cannot be truncated."),
+  TRUNCATE_LIST_BUCKETED_COLUMN(10240,
+      "A column on which a partition/table is list bucketed cannot be truncated."),
+
+  TABLE_NOT_PARTITIONED(10241, "Table {0} is not a partitioned table", true),
+  DATABSAE_ALREADY_EXISTS(10242, "Database {0} already exists", true),
+  CANNOT_REPLACE_COLUMNS(10243, "Replace columns is not supported for table {0}. SerDe may be incompatible.", true),
+  BAD_LOCATION_VALUE(10244, "{0}  is not absolute or has no scheme information.  Please specify a complete absolute uri with scheme information."),
+  UNSUPPORTED_ALTER_TBL_OP(10245, "{0} alter table options is not supported"),
+  INVALID_BIGTABLE_MAPJOIN(10246, "{0} table chosen for streaming is not valid", true),
+  MISSING_OVER_CLAUSE(10247, "Missing over clause for function : "),
+  PARTITION_SPEC_TYPE_MISMATCH(10248, "Cannot add partition column {0} of type {1} as it cannot be converted to type {2}", true),
+  UNSUPPORTED_SUBQUERY_EXPRESSION(10249, "Unsupported SubQuery Expression"),
+  INVALID_SUBQUERY_EXPRESSION(10250, "Invalid SubQuery expression"),
+
+  INVALID_HDFS_URI(10251, "{0} is not a hdfs uri", true),
+  INVALID_DIR(10252, "{0} is not a directory", true),
+  NO_VALID_LOCATIONS(10253, "Could not find any valid location to place the jars. " +
+      "Please update hive.jar.directory or hive.user.install.directory with a valid location", false),
+  UNNSUPPORTED_AUTHORIZATION_PRINCIPAL_TYPE_GROUP(10254,
+      "Principal type GROUP is not supported in this authorization setting", "28000"),
+  INVALID_TABLE_NAME(10255, "Invalid table name {0}", true),
+  INSERT_INTO_IMMUTABLE_TABLE(10256, "Inserting into a non-empty immutable table is not allowed"),
+
+  TXNMGR_NOT_SPECIFIED(10260, "Transaction manager not specified correctly, " +
+      "set hive.txn.manager"),
+  TXNMGR_NOT_INSTANTIATED(10261, "Transaction manager could not be " +
+      "instantiated, check hive.txn.manager"),
+  TXN_NO_SUCH_TRANSACTION(10262, "No record of transaction could be found, " +
+      "may have timed out"),
+  TXN_ABORTED(10263, "Transaction manager has aborted the transaction."),
+
+  LOCK_NO_SUCH_LOCK(10270, "No record of lock could be found, " +
+      "may have timed out"),
+  LOCK_REQUEST_UNSUPPORTED(10271, "Current transaction manager does not " +
+      "support explicit lock requests.  Transaction manager:  "),
+
+  METASTORE_COMMUNICATION_FAILED(10280, "Error communicating with the " +
+      "metastore"),
+  METASTORE_COULD_NOT_INITIATE(10281, "Unable to initiate connection to the " +
+      "metastore."),
+  INVALID_COMPACTION_TYPE(10282, "Invalid compaction type, supported values are 'major' and " +
+      "'minor'"),
+  NO_COMPACTION_PARTITION(10283, "You must specify a partition to compact for partitioned tables"),
+  TOO_MANY_COMPACTION_PARTITIONS(10284, "Compaction can only be requested on one partition at a " +
+      "time."),
+  DISTINCT_NOT_SUPPORTED(10285, "Distinct keyword is not support in current context"),
+
+  //========================== 20000 range starts here ========================//
   SCRIPT_INIT_ERROR(20000, "Unable to initialize custom script."),
   SCRIPT_IO_ERROR(20001, "An error occurred while reading or writing to your custom script. "
       + "It may have crashed with an error."),
@@ -346,7 +408,13 @@ public enum ErrorMsg {
       + "running your custom script."),
   SCRIPT_CLOSING_ERROR(20003, "An error occurred when trying to close the Operator " +
       "running your custom script."),
+  DYNAMIC_PARTITIONS_TOO_MANY_PER_NODE_ERROR(20004, "Fatal error occurred when node " +
+      "tried to create too many dynamic partitions. The maximum number of dynamic partitions " +
+      "is controlled by hive.exec.max.dynamic.partitions and hive.exec.max.dynamic.partitions.pernode. "),
+  PARTITION_SCAN_LIMIT_EXCEEDED(20005, "Number of partitions scanned (={0}) on table {1} exceeds limit" +
+      " (={2}). This is controlled by hive.limit.query.max.table.partition.", true),
 
+  //========================== 30000 range starts here ========================//
   STATSPUBLISHER_NOT_OBTAINED(30000, "StatsPublisher cannot be obtained. " +
     "There was a error to retrieve the StatsPublisher, and retrying " +
     "might help. If you dont want the query to fail because accurate statistics " +
@@ -370,16 +438,26 @@ public enum ErrorMsg {
 
   COLUMNSTATSCOLLECTOR_INVALID_PART_KEY(30005, "Invalid partitioning key specified in ANALYZE " +
     "statement"),
-  COLUMNSTATSCOLLECTOR_INCORRECT_NUM_PART_KEY(30006, "Incorrect number of partitioning key " +
-    "specified in ANALYZE statement"),
   COLUMNSTATSCOLLECTOR_INVALID_PARTITION(30007, "Invalid partitioning key/value specified in " +
     "ANALYZE statement"),
-  COLUMNSTATSCOLLECTOR_INVALID_SYNTAX(30008, "Dynamic partitioning is not supported yet while " +
-    "gathering column statistics through ANALYZE statement"),
   COLUMNSTATSCOLLECTOR_PARSE_ERROR(30009, "Encountered parse error while parsing rewritten query"),
   COLUMNSTATSCOLLECTOR_IO_ERROR(30010, "Encountered I/O exception while parsing rewritten query"),
   DROP_COMMAND_NOT_ALLOWED_FOR_PARTITION(30011, "Partition protected from being dropped"),
-    ;
+  COLUMNSTATSCOLLECTOR_INVALID_COLUMN(30012, "Column statistics are not supported "
+      + "for partition columns"),
+
+  STATISTICS_CLONING_FAILED(30013, "Cloning of statistics failed"),
+
+  STATSAGGREGATOR_SOURCETASK_NULL(30014, "SourceTask of StatsTask should not be null"),
+  STATSAGGREGATOR_CONNECTION_ERROR(30015,
+      "Stats aggregator of type {0} cannot be connected to", true),
+  STATSAGGREGATOR_MISSED_SOMESTATS(30016,
+      "Stats type {0} is missing from stats aggregator. If you don't want the query " +
+      "to fail because of this, set hive.stats.atomic=false", true),
+  STATS_SKIPPING_BY_ERROR(30017, "Skipping stats aggregation by error {0}", true),
+  ORC_CORRUPTED_READ(30018, "Corruption in ORC data encountered. To skip reading corrupted "
+      + "data, set " + HiveConf.ConfVars.HIVE_ORC_SKIP_CORRUPT_DATA + " to true");
+  ;
 
   private int errorCode;
   private String mesg;
@@ -476,7 +554,7 @@ public enum ErrorMsg {
 
   /**
    * For a given error message string, searches for a <code>ErrorMsg</code> enum
-   * that appears to be a match. If an match is found, returns the
+   * that appears to be a match. If a match is found, returns the
    * <code>SQLState</code> associated with the <code>ErrorMsg</code>. If a match
    * is not found or <code>ErrorMsg</code> has no <code>SQLState</code>, returns
    * the <code>SQLState</code> bound to the <code>GENERIC_ERROR</code>
@@ -593,14 +671,49 @@ public enum ErrorMsg {
   public String format(String reason) {
     return format(new String[]{reason});
   }
-
+  /**
+   * If the message is parametrized, this will fill the parameters with supplied
+   * {@code reasons}, otherwise {@code reasons} are appended at the end of the
+   * message.
+   */
   public String format(String... reasons) {
-    assert format != null;
-    return format.format(reasons);
+    /* Not all messages are parametrized even those that should have been, e.g {@link #INVALID_TABLE}.
+     INVALID_TABLE is usually used with {@link #getMsg(String)}.
+     This method can also be used with INVALID_TABLE and the like and will match getMsg(String) behavior.
+
+     Another example: {@link #INVALID_PARTITION}.  Ideally you want the message to have 2 parameters one for
+     partition name one for table name.  Since this is already defined w/o any parameters, one can still call
+     {@code INVALID_PARTITION.format("<partName> <table Name>"}.  This way the message text will be slightly
+     different but at least the errorCode will match.  Note this, should not be abused by adding anything other
+     than what should have been parameter names to keep msg text standardized.
+     */
+    if(reasons == null || reasons.length == 0) {
+      return getMsg();
+    }
+    if(format != null) {
+      return format.format(reasons);
+    }
+    if(reasons.length > 1) {
+      StringBuilder sb = new StringBuilder();
+      for(String re : reasons) {
+        if(re != null) {
+          if(sb.length() > 0) {
+            sb.append(" ");
+          }
+          sb.append(re);
+        }
+      }
+      return getMsg(sb.toString());
+    }
+    return getMsg(reasons[0]);
   }
 
   public String getErrorCodedMsg() {
     return "[Error " + errorCode + "]: " + mesg;
+  }
+
+  public String getErrorCodedMsg(String... reasons) {
+    return "[Error " + errorCode + "]: " + format(reasons);
   }
 
   public static Pattern getErrorCodePattern() {

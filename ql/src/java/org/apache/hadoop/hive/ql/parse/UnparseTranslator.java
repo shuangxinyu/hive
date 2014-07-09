@@ -25,6 +25,7 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 
 import org.antlr.runtime.TokenRewriteStream;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.metadata.HiveUtils;
 
 /**
@@ -42,8 +43,10 @@ class UnparseTranslator {
   private final NavigableMap<Integer, Translation> translations;
   private final List<CopyTranslation> copyTranslations;
   private boolean enabled;
+  private Configuration conf;
 
-  public UnparseTranslator() {
+  public UnparseTranslator(Configuration conf) {
+    this.conf = conf;
     translations = new TreeMap<Integer, Translation>();
     copyTranslations = new ArrayList<CopyTranslation>();
   }
@@ -94,60 +97,34 @@ class UnparseTranslator {
 
     int tokenStartIndex = node.getTokenStartIndex();
     int tokenStopIndex = node.getTokenStopIndex();
-
     Translation translation = new Translation();
     translation.tokenStopIndex = tokenStopIndex;
     translation.replacementText = replacementText;
 
     // Sanity check for overlap with regions already being expanded
     assert (tokenStopIndex >= tokenStartIndex);
-    Map.Entry<Integer, Translation> existingEntry;
-    existingEntry = translations.floorEntry(tokenStartIndex);
-    boolean prefix = false;
-    if (existingEntry != null) {
-      if (existingEntry.getKey().equals(tokenStartIndex)) {
-        if (existingEntry.getValue().tokenStopIndex == tokenStopIndex) {
-          if (existingEntry.getValue().replacementText.equals(replacementText)) {
-            // exact match for existing mapping: somebody is doing something
-            // redundant, but we'll let it pass
-            return;
-          }
-        } else if (tokenStopIndex > existingEntry.getValue().tokenStopIndex) {
-          // is existing mapping a prefix for new mapping? if so, that's also
-          // redundant, but in this case we need to expand it
-          prefix = replacementText.startsWith(
-            existingEntry.getValue().replacementText);
-          assert(prefix);
-        } else {
-          // new mapping is a prefix for existing mapping:  ignore it
-          prefix = existingEntry.getValue().replacementText.startsWith(
-            replacementText);
-          assert(prefix);
-          return;
-        }
-      }
-      if (!prefix) {
-        assert (existingEntry.getValue().tokenStopIndex < tokenStartIndex);
-      }
-    }
-    if (!prefix) {
-      existingEntry = translations.ceilingEntry(tokenStartIndex);
-      if (existingEntry != null) {
-        assert (existingEntry.getKey() > tokenStopIndex);
-      }
-    }
 
-    // Is existing entry a suffix of the newer entry and a subset of it?
-    existingEntry = translations.floorEntry(tokenStopIndex);
-    if (existingEntry != null) {
-      if (existingEntry.getKey().equals(tokenStopIndex)) {
-        if (tokenStartIndex < existingEntry.getKey() &&
-            tokenStopIndex == existingEntry.getKey()) {
-          // Seems newer entry is a super-set of existing entry, remove existing entry
-          assert (replacementText.endsWith(existingEntry.getValue().replacementText));
-          translations.remove(tokenStopIndex);
-        }
+    List<Integer> subsetEntries = new ArrayList<Integer>();
+    // Is the existing entry and newer entry are subset of one another ?
+    for (Map.Entry<Integer, Translation> existingEntry :
+          translations.headMap(tokenStopIndex, true).entrySet()) {
+      // check if the new entry contains the existing
+      if (existingEntry.getValue().tokenStopIndex <= tokenStopIndex &&
+            existingEntry.getKey() >= tokenStartIndex) {
+        // Collect newer entry is if a super-set of existing entry,
+        assert (replacementText.contains(existingEntry.getValue().replacementText));
+        subsetEntries.add(existingEntry.getKey());
+        // check if the existing entry contains the new
+      } else if (existingEntry.getValue().tokenStopIndex >= tokenStopIndex &&
+            existingEntry.getKey() <= tokenStartIndex) {
+        assert (existingEntry.getValue().replacementText.contains(replacementText));
+        // we don't need to add this new entry since there's already an overlapping one
+        return;
       }
+    }
+    // remove any existing entries that are contained by the new one
+    for (Integer index : subsetEntries) {
+      translations.remove(index);
     }
 
     // It's all good: create a new entry in the map (or update existing one)
@@ -178,12 +155,12 @@ class UnparseTranslator {
     else {
       // transform the table reference to an absolute reference (i.e., "db.table")
       StringBuilder replacementText = new StringBuilder();
-      replacementText.append(HiveUtils.unparseIdentifier(currentDatabaseName));
+      replacementText.append(HiveUtils.unparseIdentifier(currentDatabaseName, conf));
       replacementText.append('.');
 
       ASTNode identifier = (ASTNode)tableName.getChild(0);
       String identifierText = BaseSemanticAnalyzer.unescapeIdentifier(identifier.getText());
-      replacementText.append(HiveUtils.unparseIdentifier(identifierText));
+      replacementText.append(HiveUtils.unparseIdentifier(identifierText, conf));
 
       addTranslation(identifier, replacementText.toString());
     }
@@ -202,7 +179,7 @@ class UnparseTranslator {
     assert (identifier.getToken().getType() == HiveParser.Identifier);
     String replacementText = identifier.getText();
     replacementText = BaseSemanticAnalyzer.unescapeIdentifier(replacementText);
-    replacementText = HiveUtils.unparseIdentifier(replacementText);
+    replacementText = HiveUtils.unparseIdentifier(replacementText, conf);
     addTranslation(identifier, replacementText);
   }
 
@@ -241,10 +218,13 @@ class UnparseTranslator {
    */
   void applyTranslations(TokenRewriteStream tokenRewriteStream) {
     for (Map.Entry<Integer, Translation> entry : translations.entrySet()) {
-      tokenRewriteStream.replace(
-        entry.getKey(),
-        entry.getValue().tokenStopIndex,
-        entry.getValue().replacementText);
+      if (entry.getKey() > 0) { // negative means the key didn't exist in the original 
+                                // stream (i.e.: we changed the tree)
+        tokenRewriteStream.replace(
+           entry.getKey(),
+           entry.getValue().tokenStopIndex,
+           entry.getValue().replacementText);
+      }
     }
     for (CopyTranslation copyTranslation : copyTranslations) {
       String replacementText = tokenRewriteStream.toString(

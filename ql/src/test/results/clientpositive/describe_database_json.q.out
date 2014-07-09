@@ -2,6 +2,7 @@
 PREHOOK: type: CREATEDATABASE
 #### A masked pattern was here ####
 POSTHOOK: type: CREATEDATABASE
+#### A masked pattern was here ####
 PREHOOK: query: DESCRIBE DATABASE jsondb1
 PREHOOK: type: DESCDATABASE
 POSTHOOK: query: DESCRIBE DATABASE jsondb1
@@ -24,8 +25,12 @@ POSTHOOK: type: SHOWDATABASES
 {"databases":["jsondb1"]}
 PREHOOK: query: DROP DATABASE jsondb1
 PREHOOK: type: DROPDATABASE
+PREHOOK: Input: database:jsondb1
+PREHOOK: Output: database:jsondb1
 POSTHOOK: query: DROP DATABASE jsondb1
 POSTHOOK: type: DROPDATABASE
+POSTHOOK: Input: database:jsondb1
+POSTHOOK: Output: database:jsondb1
 PREHOOK: query: CREATE DATABASE jsondb1
 PREHOOK: type: CREATEDATABASE
 POSTHOOK: query: CREATE DATABASE jsondb1
@@ -42,5 +47,9 @@ POSTHOOK: type: DESCDATABASE
 #### A masked pattern was here ####
 PREHOOK: query: DROP DATABASE jsondb1
 PREHOOK: type: DROPDATABASE
+PREHOOK: Input: database:jsondb1
+PREHOOK: Output: database:jsondb1
 POSTHOOK: query: DROP DATABASE jsondb1
 POSTHOOK: type: DROPDATABASE
+POSTHOOK: Input: database:jsondb1
+POSTHOOK: Output: database:jsondb1

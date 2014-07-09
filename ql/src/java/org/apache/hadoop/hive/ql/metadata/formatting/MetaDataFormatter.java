@@ -23,13 +23,14 @@ import java.io.OutputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.metadata.Table;
-import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 
 /**
  * Interface to format table and index information.  We can format it
@@ -37,98 +38,76 @@ import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
  * (json).
  */
 public interface MetaDataFormatter {
-    /**
-     * Generic error code.  This and the other error codes are
-     * designed to match the HTTP status codes.
-     */
-    static final int ERROR = 500;
+  /**
+   * Write an error message.
+   * @param sqlState if {@code null}, will be ignored
+   */
+  public void error(OutputStream out, String msg, int errorCode, String sqlState)
+      throws HiveException;
 
-    /**
-     * Missing error code.
-     */
-    static final int MISSING = 404;
+  /**
+   * @param sqlState if {@code null}, will be skipped in output
+   * @param errorDetail usually string version of some Exception, if {@code null}, will be ignored
+   */
+  public void error(OutputStream out, String errorMessage, int errorCode, String sqlState, String errorDetail)
+      throws HiveException;
 
-    /**
-     * Conflict error code.
-     */
-    static final int CONFLICT = 409;
+  /**
+   * Show a list of tables.
+   */
+  public void showTables(DataOutputStream out, Set<String> tables)
+      throws HiveException;
 
-    /**
-     * Write an error message.
-     */
-    public void error(OutputStream out, String msg, int errorCode)
-        throws HiveException;
+  /**
+   * Describe table.
+   * @param out
+   * @param colPath
+   * @param tableName
+   * @param tbl
+   * @param part
+   * @param cols
+   * @param isFormatted - describe with formatted keyword
+   * @param isExt
+   * @param isPretty
+   * @param isOutputPadded - if true, add spacing and indentation
+   * @param colStats
+   * @throws HiveException
+   */
+  public void describeTable(DataOutputStream out, String colPath,
+      String tableName, Table tbl, Partition part, List<FieldSchema> cols,
+      boolean isFormatted, boolean isExt, boolean isPretty,
+      boolean isOutputPadded, List<ColumnStatisticsObj> colStats)
+          throws HiveException;
 
-    /**
-     * Write a log warn message.
-     */
-    public void logWarn(OutputStream out, String msg, int errorCode)
-        throws HiveException;
+  /**
+   * Show the table status.
+   */
+  public void showTableStatus(DataOutputStream out,
+      Hive db,
+      HiveConf conf,
+      List<Table> tbls,
+      Map<String, String> part,
+      Partition par)
+          throws HiveException;
 
-    /**
-     * Write a log info message.
-     */
-    public void logInfo(OutputStream out, String msg, int errorCode)
-        throws HiveException;
+  /**
+   * Show the table partitions.
+   */
+  public void showTablePartitons(DataOutputStream out,
+      List<String> parts)
+          throws HiveException;
 
-    /**
-     * Write a console error message.
-     */
-    public void consoleError(LogHelper console, String msg, int errorCode);
+  /**
+   * Show the databases
+   */
+  public void showDatabases(DataOutputStream out, List<String> databases)
+      throws HiveException;
 
-    /**
-     * Write a console error message.
-     */
-    public void consoleError(LogHelper console, String msg, String detail,
-                             int errorCode);
-
-    /**
-     * Show a list of tables.
-     */
-    public void showTables(DataOutputStream out, Set<String> tables)
-        throws HiveException;
-
-    /**
-     * Describe table.
-     */
-    public void describeTable(DataOutputStream out,
-                              String colPath, String tableName,
-                              Table tbl, Partition part, List<FieldSchema> cols,
-                              boolean isFormatted, boolean isExt, boolean isPretty)
-        throws HiveException;
-
-   /**
-     * Show the table status.
-     */
-    public void showTableStatus(DataOutputStream out,
-                                Hive db,
-                                HiveConf conf,
-                                List<Table> tbls,
-                                Map<String, String> part,
-                                Partition par)
-        throws HiveException;
-
-    /**
-     * Show the table partitions.
-     */
-    public void showTablePartitons(DataOutputStream out,
-                                   List<String> parts)
-        throws HiveException;
-
-    /**
-     * Show the databases
-     */
-    public void showDatabases(DataOutputStream out, List<String> databases)
-        throws HiveException;
-
-    /**
-     * Describe a database.
-     */
-    public void showDatabaseDescription(DataOutputStream out,
-                                        String database,
-                                        String comment,
-                                        String location,
-                                        Map<String, String> params)
-        throws HiveException;
+  /**
+   * Describe a database.
+   */
+  public void showDatabaseDescription (DataOutputStream out, String database, String comment,
+      String location, String ownerName, String ownerType, Map<String, String> params)
+          throws HiveException;
 }
 

@@ -26,6 +26,14 @@ public class ObjectPair<F, S> {
 
   public ObjectPair() {}
 
+  /**
+   * Creates a pair. Constructor doesn't infer template args but
+   * the method does, so the code becomes less ugly.
+   */
+  public static <T1, T2> ObjectPair<T1, T2> create(T1 f, T2 s) {
+    return new ObjectPair<T1, T2>(f, s);
+  }
+
   public ObjectPair(F first, S second) {
     this.first = first;
     this.second = second;
@@ -65,5 +73,9 @@ public class ObjectPair<F, S> {
 
     return this.getFirst().equals(that.getFirst()) &&
         this.getSecond().equals(that.getSecond());
+  }
+
+  public String toString() {
+    return first + ":" + second;
   }
 }

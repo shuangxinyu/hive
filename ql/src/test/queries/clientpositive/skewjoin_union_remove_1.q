@@ -1,4 +1,3 @@
-set hive.internal.ddl.list.bucketing.enable=true;
 set hive.optimize.skewjoin.compiletime = true;
 set hive.mapred.supports.subdirectories=true;
 
@@ -20,12 +19,12 @@ set mapred.input.dir.recursive=true;
 CREATE TABLE T1(key STRING, val STRING)
 SKEWED BY (key) ON ((2)) STORED AS TEXTFILE;
 
-LOAD DATA LOCAL INPATH '../data/files/T1.txt' INTO TABLE T1;
+LOAD DATA LOCAL INPATH '../../data/files/T1.txt' INTO TABLE T1;
 
 CREATE TABLE T2(key STRING, val STRING)
 SKEWED BY (key) ON ((3)) STORED AS TEXTFILE;
 
-LOAD DATA LOCAL INPATH '../data/files/T2.txt' INTO TABLE T2;
+LOAD DATA LOCAL INPATH '../../data/files/T2.txt' INTO TABLE T2;
 
 -- a simple join query with skew on both the tables on the join key
 

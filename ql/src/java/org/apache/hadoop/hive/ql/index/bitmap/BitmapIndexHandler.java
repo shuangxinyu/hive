@@ -28,6 +28,7 @@ import java.util.Set;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Index;
@@ -97,7 +98,7 @@ public class BitmapIndexHandler extends TableBasedIndexHandler {
     // Build reentrant QL for index query
     StringBuilder qlCommand = new StringBuilder("INSERT OVERWRITE DIRECTORY ");
 
-    String tmpFile = pctx.getContext().getMRTmpFileURI();
+    String tmpFile = pctx.getContext().getMRTmpPath().toUri().toString();
     qlCommand.append( "\"" + tmpFile + "\" ");            // QL includes " around file name
     qlCommand.append("SELECT bucketname AS `_bucketname` , COLLECT_SET(offset) AS `_offsets` FROM ");
     qlCommand.append("(SELECT `_bucketname` AS bucketname , `_offset` AS offset FROM ");
@@ -285,8 +286,8 @@ public class BitmapIndexHandler extends TableBasedIndexHandler {
     }
 
     Task<?> rootTask = IndexUtils.createRootTask(builderConf, inputs, outputs,
-        command, (LinkedHashMap<String, String>) partSpec, indexTableName, dbName);
-
+        command, partSpec, indexTableName, dbName);
+    super.setStatsDir(builderConf);
     return rootTask;
   }
 

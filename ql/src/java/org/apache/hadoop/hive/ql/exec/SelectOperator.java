@@ -22,6 +22,7 @@ import java.io.Serializable;
 import java.util.List;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.SelectDesc;
@@ -39,21 +40,25 @@ public class SelectOperator extends Operator<SelectDesc> implements
 
   transient Object[] output;
 
+  private transient boolean isSelectStarNoCompute = false;
+
   @Override
   protected void initializeOp(Configuration hconf) throws HiveException {
     // Just forward the row as is
     if (conf.isSelStarNoCompute()) {
       initializeChildren(hconf);
+      isSelectStarNoCompute = true;
       return;
     }
-
     List<ExprNodeDesc> colList = conf.getColList();
     eval = new ExprNodeEvaluator[colList.size()];
     for (int i = 0; i < colList.size(); i++) {
       assert (colList.get(i) != null);
       eval[i] = ExprNodeEvaluatorFactory.get(colList.get(i));
+      if (HiveConf.getBoolVar(hconf, HiveConf.ConfVars.HIVEEXPREVALUATIONCACHE)) {
+        eval[i] = ExprNodeEvaluatorFactory.toCachedEval(eval[i]);
+      }
     }
-
     output = new Object[eval.length];
     LOG.info("SELECT "
         + ((StructObjectInspector) inputObjInspectors[0]).getTypeName());
@@ -64,22 +69,20 @@ public class SelectOperator extends Operator<SelectDesc> implements
 
   @Override
   public void processOp(Object row, int tag) throws HiveException {
-
-    // Just forward the row as is
-    if (conf.isSelStarNoCompute()) {
+    if (isSelectStarNoCompute) {
       forward(row, inputObjInspectors[tag]);
       return;
     }
-
-    for (int i = 0; i < eval.length; i++) {
-      try {
+    int i = 0;
+    try {
+      for (; i < eval.length; ++i) {
         output[i] = eval[i].evaluate(row);
-      } catch (HiveException e) {
-        throw e;
-      } catch (RuntimeException e) {
-        throw new HiveException("Error evaluating "
-            + conf.getColList().get(i).getExprString(), e);
       }
+    } catch (HiveException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw new HiveException("Error evaluating "
+          + conf.getColList().get(i).getExprString(), e);
     }
     forward(output, outputObjInspector);
   }
@@ -118,6 +121,11 @@ public class SelectOperator extends Operator<SelectDesc> implements
 
   @Override
   public boolean supportUnionRemoveOptimization() {
+    return true;
+  }
+
+  @Override
+  public boolean acceptLimitPushdown() {
     return true;
   }
 }

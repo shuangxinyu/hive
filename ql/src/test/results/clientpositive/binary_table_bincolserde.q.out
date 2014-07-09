@@ -6,10 +6,12 @@ PREHOOK: query: -- Tests everything in binary_table_colserde.q + uses LazyBinary
 
 create table ba_test (ba_key binary, ba_val binary) stored as rcfile
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: -- Tests everything in binary_table_colserde.q + uses LazyBinaryColumnarSerde
 
 create table ba_test (ba_key binary, ba_val binary) stored as rcfile
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@ba_test
 PREHOOK: query: alter table ba_test set serde 'org.apache.hadoop.hive.serde2.columnar.LazyBinaryColumnarSerDe'
 PREHOOK: type: ALTERTABLE_SERIALIZER
@@ -21,12 +23,12 @@ POSTHOOK: Input: default@ba_test
 POSTHOOK: Output: default@ba_test
 PREHOOK: query: describe extended ba_test
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@ba_test
 POSTHOOK: query: describe extended ba_test
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-ba_key              	binary              	from deserializer   
-ba_val              	binary              	from deserializer   
+POSTHOOK: Input: default@ba_test
+ba_key              	binary              	                    
+ba_val              	binary              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: from src insert overwrite table ba_test select cast (src.key as binary), cast (src.value as binary)
@@ -47,8 +49,6 @@ POSTHOOK: query: select ba_key, ba_val from ba_test order by ba_key limit 10
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@ba_test
 #### A masked pattern was here ####
-POSTHOOK: Lineage: ba_test.ba_key EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: ba_test.ba_val EXPRESSION [(src)src.FieldSchema(name:value, type:string, comment:default), ]
 0	val_0
 0	val_0
 0	val_0
@@ -67,5 +67,3 @@ POSTHOOK: query: drop table ba_test
 POSTHOOK: type: DROPTABLE
 POSTHOOK: Input: default@ba_test
 POSTHOOK: Output: default@ba_test
-POSTHOOK: Lineage: ba_test.ba_key EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: ba_test.ba_val EXPRESSION [(src)src.FieldSchema(name:value, type:string, comment:default), ]

@@ -12,8 +12,10 @@ POSTHOOK: query: drop table tbl2
 POSTHOOK: type: DROPTABLE
 PREHOOK: query: create table tbl1  (col string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table tbl1  (col string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@tbl1
 PREHOOK: query: select * from tbl1
 PREHOOK: type: QUERY
@@ -41,11 +43,11 @@ POSTHOOK: Input: default@tbl1
 POSTHOOK: Output: default@tbl1
 PREHOOK: query: desc extended tbl1
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@tbl1
 POSTHOOK: query: desc extended tbl1
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-col                 	string              	None                
+POSTHOOK: Input: default@tbl1
+col                 	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: alter table tbl1 disable offline
@@ -58,11 +60,11 @@ POSTHOOK: Input: default@tbl1
 POSTHOOK: Output: default@tbl1
 PREHOOK: query: desc extended tbl1
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@tbl1
 POSTHOOK: query: desc extended tbl1
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-col                 	string              	None                
+POSTHOOK: Input: default@tbl1
+col                 	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: select * from tbl1
@@ -83,29 +85,31 @@ POSTHOOK: Input: default@tbl1
 #### A masked pattern was here ####
 PREHOOK: query: create table tbl2  (col string) partitioned by (p string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table tbl2  (col string) partitioned by (p string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@tbl2
 PREHOOK: query: alter table tbl2 add partition (p='p1')
 PREHOOK: type: ALTERTABLE_ADDPARTS
-PREHOOK: Input: default@tbl2
+PREHOOK: Output: default@tbl2
 POSTHOOK: query: alter table tbl2 add partition (p='p1')
 POSTHOOK: type: ALTERTABLE_ADDPARTS
-POSTHOOK: Input: default@tbl2
+POSTHOOK: Output: default@tbl2
 POSTHOOK: Output: default@tbl2@p=p1
 PREHOOK: query: alter table tbl2 add partition (p='p2')
 PREHOOK: type: ALTERTABLE_ADDPARTS
-PREHOOK: Input: default@tbl2
+PREHOOK: Output: default@tbl2
 POSTHOOK: query: alter table tbl2 add partition (p='p2')
 POSTHOOK: type: ALTERTABLE_ADDPARTS
-POSTHOOK: Input: default@tbl2
+POSTHOOK: Output: default@tbl2
 POSTHOOK: Output: default@tbl2@p=p2
 PREHOOK: query: alter table tbl2 add partition (p='p3')
 PREHOOK: type: ALTERTABLE_ADDPARTS
-PREHOOK: Input: default@tbl2
+PREHOOK: Output: default@tbl2
 POSTHOOK: query: alter table tbl2 add partition (p='p3')
 POSTHOOK: type: ALTERTABLE_ADDPARTS
-POSTHOOK: Input: default@tbl2
+POSTHOOK: Output: default@tbl2
 POSTHOOK: Output: default@tbl2@p=p3
 PREHOOK: query: alter table tbl2 drop partition (p='not_exist')
 PREHOOK: type: ALTERTABLE_DROPPARTS
@@ -144,17 +148,17 @@ POSTHOOK: Input: default@tbl2@p=p1
 POSTHOOK: Output: default@tbl2@p=p1
 PREHOOK: query: desc extended tbl2 partition (p='p1')
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@tbl2
 POSTHOOK: query: desc extended tbl2 partition (p='p1')
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-col                 	string              	None                
-p                   	string              	None                
+POSTHOOK: Input: default@tbl2
+col                 	string              	                    
+p                   	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-p                   	string              	None                
+p                   	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: alter table tbl2 enable offline
@@ -167,17 +171,17 @@ POSTHOOK: Input: default@tbl2
 POSTHOOK: Output: default@tbl2
 PREHOOK: query: desc extended tbl2
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@tbl2
 POSTHOOK: query: desc extended tbl2
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-col                 	string              	None                
-p                   	string              	None                
+POSTHOOK: Input: default@tbl2
+col                 	string              	                    
+p                   	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-p                   	string              	None                
+p                   	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: alter table tbl2 enable no_drop
@@ -190,17 +194,17 @@ POSTHOOK: Input: default@tbl2
 POSTHOOK: Output: default@tbl2
 PREHOOK: query: desc extended tbl2
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@tbl2
 POSTHOOK: query: desc extended tbl2
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-col                 	string              	None                
-p                   	string              	None                
+POSTHOOK: Input: default@tbl2
+col                 	string              	                    
+p                   	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-p                   	string              	None                
+p                   	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: alter table tbl2 drop partition (p='p3')
@@ -221,17 +225,17 @@ POSTHOOK: Input: default@tbl2
 POSTHOOK: Output: default@tbl2
 PREHOOK: query: desc extended tbl2
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@tbl2
 POSTHOOK: query: desc extended tbl2
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-col                 	string              	None                
-p                   	string              	None                
+POSTHOOK: Input: default@tbl2
+col                 	string              	                    
+p                   	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-p                   	string              	None                
+p                   	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: alter table tbl2 disable no_drop
@@ -244,17 +248,17 @@ POSTHOOK: Input: default@tbl2
 POSTHOOK: Output: default@tbl2
 PREHOOK: query: desc extended tbl2
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@tbl2
 POSTHOOK: query: desc extended tbl2
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-col                 	string              	None                
-p                   	string              	None                
+POSTHOOK: Input: default@tbl2
+col                 	string              	                    
+p                   	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-p                   	string              	None                
+p                   	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: select * from tbl2 where p='p2'
@@ -288,17 +292,17 @@ POSTHOOK: Input: default@tbl2@p=p1
 POSTHOOK: Output: default@tbl2@p=p1
 PREHOOK: query: desc extended tbl2 partition (p='p1')
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@tbl2
 POSTHOOK: query: desc extended tbl2 partition (p='p1')
 POSTHOOK: type: DESCTABLE
-# col_name            	data_type           	comment             
-	 	 
-col                 	string              	None                
-p                   	string              	None                
+POSTHOOK: Input: default@tbl2
+col                 	string              	                    
+p                   	string              	                    
 	 	 
 # Partition Information	 	 
 # col_name            	data_type           	comment             
 	 	 
-p                   	string              	None                
+p                   	string              	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: select * from tbl2 where p='p1'
@@ -340,7 +344,6 @@ POSTHOOK: query: insert overwrite table tbl1 select col from tbl1
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@tbl1
 POSTHOOK: Output: default@tbl1
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl2)tbl2.FieldSchema(name:col, type:string, comment:null), ]
 POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl1)tbl1.FieldSchema(name:col, type:string, comment:null), ]
 PREHOOK: query: alter table tbl2 partition (p='p1') enable no_drop
 PREHOOK: type: ALTERPARTITION_PROTECTMODE
@@ -351,8 +354,6 @@ POSTHOOK: type: ALTERPARTITION_PROTECTMODE
 POSTHOOK: Input: default@tbl2
 POSTHOOK: Input: default@tbl2@p=p1
 POSTHOOK: Output: default@tbl2@p=p1
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl2)tbl2.FieldSchema(name:col, type:string, comment:null), ]
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl1)tbl1.FieldSchema(name:col, type:string, comment:null), ]
 PREHOOK: query: alter table tbl2 partition (p='p1') disable no_drop
 PREHOOK: type: ALTERPARTITION_PROTECTMODE
 PREHOOK: Input: default@tbl2
@@ -362,8 +363,6 @@ POSTHOOK: type: ALTERPARTITION_PROTECTMODE
 POSTHOOK: Input: default@tbl2
 POSTHOOK: Input: default@tbl2@p=p1
 POSTHOOK: Output: default@tbl2@p=p1
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl2)tbl2.FieldSchema(name:col, type:string, comment:null), ]
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl1)tbl1.FieldSchema(name:col, type:string, comment:null), ]
 PREHOOK: query: alter table tbl2 partition (p='p2') enable no_drop
 PREHOOK: type: ALTERPARTITION_PROTECTMODE
 PREHOOK: Input: default@tbl2
@@ -373,8 +372,6 @@ POSTHOOK: type: ALTERPARTITION_PROTECTMODE
 POSTHOOK: Input: default@tbl2
 POSTHOOK: Input: default@tbl2@p=p2
 POSTHOOK: Output: default@tbl2@p=p2
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl2)tbl2.FieldSchema(name:col, type:string, comment:null), ]
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl1)tbl1.FieldSchema(name:col, type:string, comment:null), ]
 PREHOOK: query: alter table tbl2 drop partition (p='p1')
 PREHOOK: type: ALTERTABLE_DROPPARTS
 PREHOOK: Input: default@tbl2
@@ -383,8 +380,6 @@ POSTHOOK: query: alter table tbl2 drop partition (p='p1')
 POSTHOOK: type: ALTERTABLE_DROPPARTS
 POSTHOOK: Input: default@tbl2
 POSTHOOK: Output: default@tbl2@p=p1
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl2)tbl2.FieldSchema(name:col, type:string, comment:null), ]
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl1)tbl1.FieldSchema(name:col, type:string, comment:null), ]
 PREHOOK: query: alter table tbl2 partition (p='p2') disable no_drop
 PREHOOK: type: ALTERPARTITION_PROTECTMODE
 PREHOOK: Input: default@tbl2
@@ -394,8 +389,6 @@ POSTHOOK: type: ALTERPARTITION_PROTECTMODE
 POSTHOOK: Input: default@tbl2
 POSTHOOK: Input: default@tbl2@p=p2
 POSTHOOK: Output: default@tbl2@p=p2
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl2)tbl2.FieldSchema(name:col, type:string, comment:null), ]
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl1)tbl1.FieldSchema(name:col, type:string, comment:null), ]
 PREHOOK: query: drop table tbl1
 PREHOOK: type: DROPTABLE
 PREHOOK: Input: default@tbl1
@@ -404,8 +397,6 @@ POSTHOOK: query: drop table tbl1
 POSTHOOK: type: DROPTABLE
 POSTHOOK: Input: default@tbl1
 POSTHOOK: Output: default@tbl1
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl2)tbl2.FieldSchema(name:col, type:string, comment:null), ]
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl1)tbl1.FieldSchema(name:col, type:string, comment:null), ]
 PREHOOK: query: drop table tbl2
 PREHOOK: type: DROPTABLE
 PREHOOK: Input: default@tbl2
@@ -414,5 +405,3 @@ POSTHOOK: query: drop table tbl2
 POSTHOOK: type: DROPTABLE
 POSTHOOK: Input: default@tbl2
 POSTHOOK: Output: default@tbl2
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl2)tbl2.FieldSchema(name:col, type:string, comment:null), ]
-POSTHOOK: Lineage: tbl1.col SIMPLE [(tbl1)tbl1.FieldSchema(name:col, type:string, comment:null), ]

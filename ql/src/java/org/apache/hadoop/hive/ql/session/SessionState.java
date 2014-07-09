@@ -17,39 +17,53 @@
  */
 
 package org.apache.hadoop.hive.ql.session;
+import static org.apache.hadoop.hive.metastore.MetaStoreUtils.DEFAULT_DATABASE_NAME;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.net.URI;
-import java.net.URL;
 import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.MapRedStats;
-import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
 import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.hadoop.hive.ql.exec.tez.TezSessionPoolManager;
+import org.apache.hadoop.hive.ql.exec.tez.TezSessionState;
 import org.apache.hadoop.hive.ql.history.HiveHistory;
+import org.apache.hadoop.hive.ql.history.HiveHistoryImpl;
+import org.apache.hadoop.hive.ql.history.HiveHistoryProxyHandler;
+import org.apache.hadoop.hive.ql.log.PerfLogger;
+import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.HiveUtils;
 import org.apache.hadoop.hive.ql.plan.HiveOperation;
 import org.apache.hadoop.hive.ql.security.HiveAuthenticationProvider;
 import org.apache.hadoop.hive.ql.security.authorization.HiveAuthorizationProvider;
+import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthorizer;
+import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthorizerFactory;
+import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveMetastoreClientFactoryImpl;
 import org.apache.hadoop.hive.ql.util.DosToUnix;
+import org.apache.hadoop.hive.shims.ShimLoader;
+import org.apache.hadoop.util.ReflectionUtils;
 
 /**
  * SessionState encapsulates common data associated with a session.
@@ -59,6 +73,9 @@ import org.apache.hadoop.hive.ql.util.DosToUnix;
  * configuration information
  */
 public class SessionState {
+  private static final Log LOG = LogFactory.getLog(SessionState.class);
+
+  protected ClassLoader parentLoader;
 
   /**
    * current configuration.
@@ -74,6 +91,11 @@ public class SessionState {
    * verbose mode
    */
   protected boolean isVerbose;
+
+  /**
+   * Is the query served from HiveServer2
+   */
+  private boolean isHiveServerQuery = false;
 
   /*
    * HiveHistory Object
@@ -107,13 +129,19 @@ public class SessionState {
    */
   private HiveOperation commandType;
 
+  private String lastCommand;
+
   private HiveAuthorizationProvider authorizer;
+
+  private HiveAuthorizer authorizerV2;
+
+  public enum AuthorizationMode{V1, V2};
 
   private HiveAuthenticationProvider authenticator;
 
   private CreateTableAutomaticGrant createTableGrants;
 
-  private List<MapRedStats> lastMapRedStatsList;
+  private Map<String, MapRedStats> mapRedStats;
 
   private Map<String, String> hiveVariables;
 
@@ -121,17 +149,28 @@ public class SessionState {
   private Map<String, List<List<String>>> stackTraces;
 
   // This mapping collects all the configuration variables which have been set by the user
-  // explicitely, either via SET in the CLI, the hiveconf option, or a System property.
+  // explicitly, either via SET in the CLI, the hiveconf option, or a System property.
   // It is a mapping from the variable name to its value.  Note that if a user repeatedly
   // changes the value of a variable, the corresponding change will be made in this mapping.
   private Map<String, String> overriddenConfigurations;
 
   private Map<String, List<String>> localMapRedErrors;
 
+  private TezSessionState tezSessionState;
+
+  private String currentDatabase;
+
+  private final String CONFIG_AUTHZ_SETTINGS_APPLIED_MARKER =
+      "hive.internal.ss.authz.settings.applied.marker";
+
   /**
    * Lineage state.
    */
   LineageState ls;
+
+  private PerfLogger perfLogger;
+
+  private final String userName;
 
   /**
    * Get the lineage state stored in this session.
@@ -166,6 +205,10 @@ public class SessionState {
     }
   }
 
+  public boolean isHiveServerQuery() {
+    return this.isHiveServerQuery;
+  }
+
   public void setIsSilent(boolean isSilent) {
     if(conf != null) {
       conf.setBoolVar(HiveConf.ConfVars.HIVESESSIONSILENT, isSilent);
@@ -181,29 +224,26 @@ public class SessionState {
     this.isVerbose = isVerbose;
   }
 
-  public SessionState() {
-    this(null);
+  public void setIsHiveServerQuery(boolean isHiveServerQuery) {
+    this.isHiveServerQuery = isHiveServerQuery;
   }
 
   public SessionState(HiveConf conf) {
+    this(conf, null);
+  }
+
+  public SessionState(HiveConf conf, String userName) {
     this.conf = conf;
+    this.userName = userName;
     isSilent = conf.getBoolVar(HiveConf.ConfVars.HIVESESSIONSILENT);
     ls = new LineageState();
     overriddenConfigurations = new HashMap<String, String>();
     overriddenConfigurations.putAll(HiveConf.getConfSystemProperties());
-
-    // Register the Hive builtins jar and all of its functions
-    try {
-      Class<?> pluginClass = Utilities.getBuiltinUtilsClass();
-      URL jarLocation = pluginClass.getProtectionDomain().getCodeSource()
-        .getLocation();
-      add_builtin_resource(
-        ResourceType.JAR, jarLocation.toString());
-      FunctionRegistry.registerFunctionsFromPluginJar(
-        jarLocation, pluginClass.getClassLoader());
-    } catch (Exception ex) {
-      throw new RuntimeException("Failed to load Hive builtin functions", ex);
+    // if there isn't already a session name, go ahead and create it.
+    if (StringUtils.isEmpty(conf.getVar(HiveConf.ConfVars.HIVESESSIONID))) {
+      conf.setVar(HiveConf.ConfVars.HIVESESSIONID, makeSessionId());
     }
+    parentLoader = JavaUtils.getClassLoader();
   }
 
   public void setCmd(String cmdString) {
@@ -248,52 +288,147 @@ public class SessionState {
   }
 
   /**
+   * Sets the given session state in the thread local var for sessions.
+   */
+  public static void setCurrentSessionState(SessionState startSs) {
+    tss.set(startSs);
+    Thread.currentThread().setContextClassLoader(startSs.getConf().getClassLoader());
+  }
+
+  public static void detachSession() {
+    tss.remove();
+  }
+
+  /**
    * set current session to existing session object if a thread is running
    * multiple sessions - it must call this method with the new session object
    * when switching from one session to another.
-   * @throws HiveException
    */
   public static SessionState start(SessionState startSs) {
 
-    tss.set(startSs);
+    setCurrentSessionState(startSs);
 
-    if (StringUtils.isEmpty(startSs.getConf().getVar(
-        HiveConf.ConfVars.HIVESESSIONID))) {
-      startSs.getConf()
-          .setVar(HiveConf.ConfVars.HIVESESSIONID, makeSessionId());
-    }
-
-    if (startSs.hiveHist == null) {
-      startSs.hiveHist = new HiveHistory(startSs);
+    if(startSs.hiveHist == null){
+      if (startSs.getConf().getBoolVar(HiveConf.ConfVars.HIVE_SESSION_HISTORY_ENABLED)) {
+        startSs.hiveHist = new HiveHistoryImpl(startSs);
+      }else {
+        //Hive history is disabled, create a no-op proxy
+        startSs.hiveHist = HiveHistoryProxyHandler.getNoOpHiveHistoryProxy();
+      }
     }
 
     if (startSs.getTmpOutputFile() == null) {
-      // per-session temp file containing results to be sent from HiveServer to HiveClient
-      File tmpDir = new File(
-          HiveConf.getVar(startSs.getConf(), HiveConf.ConfVars.HIVEHISTORYFILELOC));
-      String sessionID = startSs.getConf().getVar(HiveConf.ConfVars.HIVESESSIONID);
+      // set temp file containing results to be sent to HiveClient
       try {
-        File tmpFile = File.createTempFile(sessionID, ".pipeout", tmpDir);
-        tmpFile.deleteOnExit();
-        startSs.setTmpOutputFile(tmpFile);
+        startSs.setTmpOutputFile(createTempFile(startSs.getConf()));
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
     }
 
+    // Get the following out of the way when you start the session these take a
+    // while and should be done when we start up.
     try {
-      startSs.authenticator = HiveUtils.getAuthenticator(
-          startSs.getConf(),HiveConf.ConfVars.HIVE_AUTHENTICATOR_MANAGER);
-      startSs.authorizer = HiveUtils.getAuthorizeProviderManager(
-          startSs.getConf(), HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
-          startSs.authenticator);
-      startSs.createTableGrants = CreateTableAutomaticGrant.create(startSs
-          .getConf());
+      //Hive object instance should be created with a copy of the conf object. If the conf is
+      // shared with SessionState, other parts of the code might update the config, but
+      // Hive.get(HiveConf) would not recognize the case when it needs refreshing
+      Hive.get(new HiveConf(startSs.conf)).getMSC();
+      ShimLoader.getHadoopShims().getUGIForConf(startSs.conf);
+      FileSystem.get(startSs.conf);
+    } catch (Exception e) {
+      // catch-all due to some exec time dependencies on session state
+      // that would cause ClassNoFoundException otherwise
+      throw new RuntimeException(e);
+    }
+
+    if (HiveConf.getVar(startSs.getConf(), HiveConf.ConfVars.HIVE_EXECUTION_ENGINE)
+        .equals("tez") && (startSs.isHiveServerQuery == false)) {
+      try {
+        if (startSs.tezSessionState == null) {
+          startSs.tezSessionState = new TezSessionState(startSs.getSessionId());
+        }
+        if (!startSs.tezSessionState.isOpen()) {
+          startSs.tezSessionState.open(startSs.conf); // should use conf on session start-up
+        }
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    } else {
+      LOG.info("No Tez session required at this point. hive.execution.engine=mr.");
+    }
+    return startSs;
+  }
+
+  /**
+   * Setup authentication and authorization plugins for this session.
+   */
+  private void setupAuth() {
+
+    if (authenticator != null) {
+      // auth has been initialized
+      return;
+    }
+
+    try {
+      authenticator = HiveUtils.getAuthenticator(conf,
+          HiveConf.ConfVars.HIVE_AUTHENTICATOR_MANAGER);
+      authenticator.setSessionState(this);
+
+      String clsStr = HiveConf.getVar(conf, HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER);
+      authorizer = HiveUtils.getAuthorizeProviderManager(conf,
+          clsStr, authenticator, true);
+
+      if (authorizer == null) {
+        // if it was null, the new authorization plugin must be specified in
+        // config
+        HiveAuthorizerFactory authorizerFactory = HiveUtils.getAuthorizerFactory(conf,
+            HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER);
+
+        authorizerV2 = authorizerFactory.createHiveAuthorizer(new HiveMetastoreClientFactoryImpl(),
+            conf, authenticator);
+
+        authorizerV2.applyAuthorizationConfigPolicy(conf);
+        // create the create table grants with new config
+        createTableGrants = CreateTableAutomaticGrant.create(conf);
+      }
+
     } catch (HiveException e) {
       throw new RuntimeException(e);
     }
 
-    return startSs;
+    if(LOG.isDebugEnabled()){
+      Object authorizationClass = getAuthorizationMode() == AuthorizationMode.V1 ?
+          getAuthorizer() : getAuthorizerV2();
+          LOG.debug("Session is using authorization class " + authorizationClass.getClass());
+    }
+    return;
+  }
+
+  /**
+   * @param conf
+   * @return per-session temp file
+   * @throws IOException
+   */
+  private static File createTempFile(HiveConf conf) throws IOException {
+    String lScratchDir =
+        HiveConf.getVar(conf, HiveConf.ConfVars.LOCALSCRATCHDIR);
+
+    File tmpDir = new File(lScratchDir);
+    String sessionID = conf.getVar(HiveConf.ConfVars.HIVESESSIONID);
+    if (!tmpDir.exists()) {
+      if (!tmpDir.mkdirs()) {
+        //Do another exists to check to handle possible race condition
+        // Another thread might have created the dir, if that is why
+        // mkdirs returned false, that is fine
+        if(!tmpDir.exists()){
+          throw new RuntimeException("Unable to create log directory "
+              + lScratchDir);
+        }
+      }
+    }
+    File tmpFile = File.createTempFile(sessionID, ".pipeout", tmpDir);
+    tmpFile.deleteOnExit();
+    return tmpFile;
   }
 
   /**
@@ -312,15 +447,21 @@ public class SessionState {
     return hiveHist;
   }
 
+  /**
+   * Create a session ID. Looks like:
+   *   $user_$pid@$host_$date
+   * @return the unique string
+   */
   private static String makeSessionId() {
-    GregorianCalendar gc = new GregorianCalendar();
-    String userid = System.getProperty("user.name");
+    return UUID.randomUUID().toString();
+  }
 
-    return userid
-        + "_"
-        + String.format("%1$4d%2$02d%3$02d%4$02d%5$02d", gc.get(Calendar.YEAR),
-        gc.get(Calendar.MONTH) + 1, gc.get(Calendar.DAY_OF_MONTH), gc
-        .get(Calendar.HOUR_OF_DAY), gc.get(Calendar.MINUTE));
+  public String getLastCommand() {
+    return lastCommand;
+  }
+
+  public void setLastCommand(String lastCommand) {
+    this.lastCommand = lastCommand;
   }
 
   /**
@@ -415,65 +556,63 @@ public class SessionState {
     return _console;
   }
 
-  public static String validateFile(Set<String> curFiles, String newFile) {
+  /**
+   *
+   * @return username from current SessionState authenticator. username will be
+   *         null if there is no current SessionState object or authenticator is
+   *         null.
+   */
+  public static String getUserFromAuthenticator() {
+    if (SessionState.get() != null && SessionState.get().getAuthenticator() != null) {
+      return SessionState.get().getAuthenticator().getUserName();
+    }
+    return null;
+  }
+
+  static void validateFiles(List<String> newFiles) throws IllegalArgumentException {
     SessionState ss = SessionState.get();
-    LogHelper console = getConsole();
     Configuration conf = (ss == null) ? new Configuration() : ss.getConf();
 
-    try {
-      if (Utilities.realFile(newFile, conf) != null) {
-        return newFile;
-      } else {
-        console.printError(newFile + " does not exist");
-        return null;
+    LogHelper console = getConsole();
+    for (String newFile : newFiles) {
+      try {
+        if (Utilities.realFile(newFile, conf) == null) {
+          String message = newFile + " does not exist";
+          throw new IllegalArgumentException(message);
+        }
+      } catch (IOException e) {
+        String message = "Unable to validate " + newFile;
+        throw new IllegalArgumentException(message, e);
       }
-    } catch (IOException e) {
-      console.printError("Unable to validate " + newFile + "\nException: "
-          + e.getMessage(), "\n"
-          + org.apache.hadoop.util.StringUtils.stringifyException(e));
-      return null;
     }
   }
 
-  public static boolean registerJar(String newJar) {
+  static void registerJars(List<String> newJars) throws IllegalArgumentException {
     LogHelper console = getConsole();
     try {
       ClassLoader loader = Thread.currentThread().getContextClassLoader();
-      ClassLoader newLoader = Utilities.addToClassPath(loader, StringUtils.split(newJar, ","));
+      ClassLoader newLoader = Utilities.addToClassPath(loader, newJars.toArray(new String[0]));
       Thread.currentThread().setContextClassLoader(newLoader);
       SessionState.get().getConf().setClassLoader(newLoader);
-      console.printInfo("Added " + newJar + " to class path");
-      return true;
+      console.printInfo("Added " + newJars + " to class path");
     } catch (Exception e) {
-      console.printError("Unable to register " + newJar + "\nException: "
-          + e.getMessage(), "\n"
-          + org.apache.hadoop.util.StringUtils.stringifyException(e));
-      return false;
+      String message = "Unable to register " + newJars;
+      throw new IllegalArgumentException(message, e);
     }
   }
 
-  public static boolean unregisterJar(String jarsToUnregister) {
+  static boolean unregisterJar(List<String> jarsToUnregister) {
     LogHelper console = getConsole();
     try {
-      Utilities.removeFromClassPath(StringUtils.split(jarsToUnregister, ","));
+      Utilities.removeFromClassPath(jarsToUnregister.toArray(new String[0]));
       console.printInfo("Deleted " + jarsToUnregister + " from class path");
       return true;
     } catch (Exception e) {
       console.printError("Unable to unregister " + jarsToUnregister
           + "\nException: " + e.getMessage(), "\n"
-          + org.apache.hadoop.util.StringUtils.stringifyException(e));
+              + org.apache.hadoop.util.StringUtils.stringifyException(e));
       return false;
     }
-  }
-
-  /**
-   * ResourceHook.
-   *
-   */
-  public static interface ResourceHook {
-    String preHook(Set<String> cur, String s);
-
-    boolean postHook(Set<String> cur, String s);
   }
 
   /**
@@ -481,45 +620,25 @@ public class SessionState {
    *
    */
   public static enum ResourceType {
-    FILE(new ResourceHook() {
-      public String preHook(Set<String> cur, String s) {
-        return validateFile(cur, s);
+    FILE,
+
+    JAR {
+      @Override
+      public void preHook(Set<String> cur, List<String> s) throws IllegalArgumentException {
+        super.preHook(cur, s);
+        registerJars(s);
       }
-
-      public boolean postHook(Set<String> cur, String s) {
-        return true;
+      @Override
+      public void postHook(Set<String> cur, List<String> s) {
+        unregisterJar(s);
       }
-    }),
+    },
+    ARCHIVE;
 
-    JAR(new ResourceHook() {
-      public String preHook(Set<String> cur, String s) {
-        String newJar = validateFile(cur, s);
-        if (newJar != null) {
-          return (registerJar(newJar) ? newJar : null);
-        } else {
-          return null;
-        }
-      }
-
-      public boolean postHook(Set<String> cur, String s) {
-        return unregisterJar(s);
-      }
-    }),
-
-    ARCHIVE(new ResourceHook() {
-      public String preHook(Set<String> cur, String s) {
-        return validateFile(cur, s);
-      }
-
-      public boolean postHook(Set<String> cur, String s) {
-        return true;
-      }
-    });
-
-    public ResourceHook hook;
-
-    ResourceType(ResourceHook hook) {
-      this.hook = hook;
+    public void preHook(Set<String> cur, List<String> s) throws IllegalArgumentException {
+      validateFiles(s);
+    }
+    public void postHook(Set<String> cur, List<String> s) {
     }
   };
 
@@ -547,38 +666,49 @@ public class SessionState {
   }
 
   private final HashMap<ResourceType, Set<String>> resource_map =
-    new HashMap<ResourceType, Set<String>>();
+      new HashMap<ResourceType, Set<String>>();
 
-  public String add_resource(ResourceType t, String value) {
-    // By default don't convert to unix
+  public String add_resource(ResourceType t, String value) throws RuntimeException {
     return add_resource(t, value, false);
   }
 
-  public String add_resource(ResourceType t, String value, boolean convertToUnix) {
-    try {
-      value = downloadResource(value, convertToUnix);
-    } catch (Exception e) {
-      getConsole().printError(e.getMessage());
+  public String add_resource(ResourceType t, String value, boolean convertToUnix)
+      throws RuntimeException {
+    List<String> added = add_resources(t, Arrays.asList(value), convertToUnix);
+    if (added == null || added.isEmpty()) {
       return null;
     }
-
-    Set<String> resourceMap = getResourceMap(t);
-
-    String fnlVal = value;
-    if (t.hook != null) {
-      fnlVal = t.hook.preHook(resourceMap, value);
-      if (fnlVal == null) {
-        return fnlVal;
-      }
-    }
-    getConsole().printInfo("Added resource: " + fnlVal);
-    resourceMap.add(fnlVal);
-
-    return fnlVal;
+    return added.get(0);
   }
 
-  public void add_builtin_resource(ResourceType t, String value) {
-    getResourceMap(t).add(value);
+  public List<String> add_resources(ResourceType t, List<String> values)
+      throws RuntimeException {
+    // By default don't convert to unix
+    return add_resources(t, values, false);
+  }
+
+  public List<String> add_resources(ResourceType t, List<String> values, boolean convertToUnix)
+      throws RuntimeException {
+    Set<String> resourceMap = getResourceMap(t);
+
+    List<String> localized = new ArrayList<String>();
+    try {
+      for (String value : values) {
+        localized.add(downloadResource(value, convertToUnix));
+      }
+
+      t.preHook(resourceMap, localized);
+
+    } catch (RuntimeException e) {
+      getConsole().printError(e.getMessage(), "\n"
+          + org.apache.hadoop.util.StringUtils.stringifyException(e));
+      throw e;
+    }
+
+    getConsole().printInfo("Added resources: " + values);
+    resourceMap.addAll(localized);
+
+    return localized;
   }
 
   private Set<String> getResourceMap(ResourceType t) {
@@ -603,39 +733,22 @@ public class SessionState {
   private String downloadResource(String value, boolean convertToUnix) {
     if (canDownloadResource(value)) {
       getConsole().printInfo("converting to local " + value);
-      String location = getConf().getVar(HiveConf.ConfVars.DOWNLOADED_RESOURCES_DIR);
-
+      File resourceDir = new File(getConf().getVar(HiveConf.ConfVars.DOWNLOADED_RESOURCES_DIR));
       String destinationName = new Path(value).getName();
-      String prefix = destinationName;
-      String postfix = null;
-      int index = destinationName.lastIndexOf(".");
-      if (index > 0) {
-        prefix = destinationName.substring(0, index);
-        postfix = destinationName.substring(index);
-      }
-      if (prefix.length() < 3) {
-        prefix += ".tmp";   // prefix should be longer than 3
-      }
-
-      File resourceDir = new File(location);
-      if (resourceDir.exists() && !resourceDir.isDirectory()) {
-        throw new RuntimeException("The resource directory is not a directory, " +
-            "resourceDir is set to " + resourceDir);
+      File destinationFile = new File(resourceDir, destinationName);
+      if (resourceDir.exists() && ! resourceDir.isDirectory()) {
+        throw new RuntimeException("The resource directory is not a directory, resourceDir is set to" + resourceDir);
       }
       if (!resourceDir.exists() && !resourceDir.mkdirs()) {
         throw new RuntimeException("Couldn't create directory " + resourceDir);
-      }
-
-      File destinationFile;
-      try {
-        destinationFile = File.createTempFile(prefix, postfix, resourceDir);
-      } catch (Exception e) {
-        throw new RuntimeException("Failed to create temporary file for " + value, e);
       }
       try {
         FileSystem fs = FileSystem.get(new URI(value), conf);
         fs.copyToLocalFile(new Path(value), new Path(destinationFile.getCanonicalPath()));
         value = destinationFile.getCanonicalPath();
+
+        // add "execute" permission to downloaded resource file (needed when loading dll file)
+        FileUtil.chmod(value, "ugo+rx", true);
         if (convertToUnix && DosToUnix.isWindowsScript(destinationFile)) {
           try {
             DosToUnix.convertWindowsScriptToUnix(destinationFile);
@@ -651,23 +764,19 @@ public class SessionState {
     return value;
   }
 
-  public boolean delete_resource(ResourceType t, String value) {
-    if (resource_map.get(t) == null) {
-      return false;
+  public void delete_resources(ResourceType t, List<String> value) {
+    Set<String> resources = resource_map.get(t);
+    if (resources != null && !resources.isEmpty()) {
+      t.postHook(resources, value);
+      resources.removeAll(value);
     }
-    if (t.hook != null) {
-      if (!t.hook.postHook(resource_map.get(t), value)) {
-        return false;
-      }
-    }
-    return (resource_map.get(t).remove(value));
   }
 
   public Set<String> list_resource(ResourceType t, List<String> filter) {
-    if (resource_map.get(t) == null) {
+    Set<String> orig = resource_map.get(t);
+    if (orig == null) {
       return null;
     }
-    Set<String> orig = resource_map.get(t);
     if (filter == null) {
       return orig;
     } else {
@@ -681,11 +790,10 @@ public class SessionState {
     }
   }
 
-  public void delete_resource(ResourceType t) {
-    if (resource_map.get(t) != null) {
-      for (String value : resource_map.get(t)) {
-        delete_resource(t, value);
-      }
+  public void delete_resources(ResourceType t) {
+    Set<String> resources = resource_map.get(t);
+    if (resources != null && !resources.isEmpty()) {
+      delete_resources(t, new ArrayList<String>(resources));
       resource_map.remove(t);
     }
   }
@@ -706,6 +814,7 @@ public class SessionState {
   }
 
   public HiveAuthorizationProvider getAuthorizer() {
+    setupAuth();
     return authorizer;
   }
 
@@ -713,7 +822,13 @@ public class SessionState {
     this.authorizer = authorizer;
   }
 
+  public HiveAuthorizer getAuthorizerV2() {
+    setupAuth();
+    return authorizerV2;
+  }
+
   public HiveAuthenticationProvider getAuthenticator() {
+    setupAuth();
     return authenticator;
   }
 
@@ -722,6 +837,7 @@ public class SessionState {
   }
 
   public CreateTableAutomaticGrant getCreateTableGrants() {
+    setupAuth();
     return createTableGrants;
   }
 
@@ -729,12 +845,12 @@ public class SessionState {
     this.createTableGrants = createTableGrants;
   }
 
-  public List<MapRedStats> getLastMapRedStatsList() {
-    return lastMapRedStatsList;
+  public Map<String, MapRedStats> getMapRedStats() {
+    return mapRedStats;
   }
 
-  public void setLastMapRedStatsList(List<MapRedStats> lastMapRedStatsList) {
-    this.lastMapRedStatsList = lastMapRedStatsList;
+  public void setMapRedStats(Map<String, MapRedStats> mapRedStats) {
+    this.mapRedStats = mapRedStats;
   }
 
   public void setStackTraces(Map<String, List<List<String>>> stackTraces) {
@@ -770,5 +886,110 @@ public class SessionState {
 
   public void setLocalMapRedErrors(Map<String, List<String>> localMapRedErrors) {
     this.localMapRedErrors = localMapRedErrors;
+  }
+
+  public String getCurrentDatabase() {
+    if (currentDatabase == null) {
+      currentDatabase = DEFAULT_DATABASE_NAME;
+    }
+    return currentDatabase;
+  }
+
+  public void setCurrentDatabase(String currentDatabase) {
+    this.currentDatabase = currentDatabase;
+  }
+
+  public void close() throws IOException {
+    JavaUtils.closeClassLoadersTo(conf.getClassLoader(), parentLoader);
+    File resourceDir =
+        new File(getConf().getVar(HiveConf.ConfVars.DOWNLOADED_RESOURCES_DIR));
+    LOG.debug("Removing resource dir " + resourceDir);
+    try {
+      if (resourceDir.exists()) {
+        FileUtils.deleteDirectory(resourceDir);
+      }
+    } catch (IOException e) {
+      LOG.info("Error removing session resource dir " + resourceDir, e);
+    } finally {
+      detachSession();
+    }
+
+    try {
+      if (tezSessionState != null) {
+        TezSessionPoolManager.getInstance().close(tezSessionState);
+      }
+    } catch (Exception e) {
+      LOG.info("Error closing tez session", e);
+    } finally {
+      tezSessionState = null;
+    }
+  }
+
+  public AuthorizationMode getAuthorizationMode(){
+    setupAuth();
+    if(authorizer != null){
+      return AuthorizationMode.V1;
+    }else if(authorizerV2 != null){
+      return AuthorizationMode.V2;
+    }
+    //should not happen - this should not get called before this.start() is called
+    throw new AssertionError("Authorization plugins not initialized!");
+  }
+
+  public boolean isAuthorizationModeV2(){
+    return getAuthorizationMode() == AuthorizationMode.V2;
+  }
+
+  /**
+   * @param resetPerfLogger
+   * @return  Tries to return an instance of the class whose name is configured in
+   *          hive.exec.perf.logger, but if it can't it just returns an instance of
+   *          the base PerfLogger class
+
+   */
+  public PerfLogger getPerfLogger(boolean resetPerfLogger) {
+    if ((perfLogger == null) || resetPerfLogger) {
+      try {
+        perfLogger = (PerfLogger) ReflectionUtils.newInstance(conf.getClassByName(
+            conf.getVar(ConfVars.HIVE_PERF_LOGGER)), conf);
+      } catch (ClassNotFoundException e) {
+        LOG.error("Performance Logger Class not found:" + e.getMessage());
+        perfLogger = new PerfLogger();
+      }
+    }
+    return perfLogger;
+  }
+
+  public TezSessionState getTezSession() {
+    return tezSessionState;
+  }
+
+  public void setTezSession(TezSessionState session) {
+    this.tezSessionState = session;
+  }
+
+  public String getUserName() {
+    return userName;
+  }
+
+  /**
+   * If authorization mode is v2, then pass it through authorizer so that it can apply
+   * any security configuration changes.
+   */
+  public void applyAuthorizationPolicy() throws HiveException {
+    if(!isAuthorizationModeV2()){
+      // auth v1 interface does not have this functionality
+      return;
+    }
+
+    // avoid processing the same config multiple times, check marker
+    if (conf.get(CONFIG_AUTHZ_SETTINGS_APPLIED_MARKER, "").equals(Boolean.TRUE.toString())) {
+      return;
+    }
+
+    authorizerV2.applyAuthorizationConfigPolicy(conf);
+    // set a marker that this conf has been processed.
+    conf.set(CONFIG_AUTHZ_SETTINGS_APPLIED_MARKER, Boolean.TRUE.toString());
+
   }
 }

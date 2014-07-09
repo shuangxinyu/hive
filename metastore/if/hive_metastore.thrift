@@ -67,7 +67,38 @@ const string HIVE_FILTER_FIELD_PARAMS = "hive_filter_field_params__"
 const string HIVE_FILTER_FIELD_LAST_ACCESS = "hive_filter_field_last_access__"
 
 enum PartitionEventType {
-  LOAD_DONE = 1,  
+  LOAD_DONE = 1,
+}
+
+// Enums for transaction and lock management 
+enum TxnState {
+    COMMITTED = 1,
+    ABORTED = 2,
+    OPEN = 3,
+}
+
+enum LockLevel {
+    DB = 1,
+    TABLE = 2,
+    PARTITION = 3,
+}
+
+enum LockState {
+    ACQUIRED = 1,       // requester has the lock
+    WAITING = 2,        // requester is waiting for the lock and should call checklock at a later point to see if the lock has been obtained.
+    ABORT = 3,          // the lock has been aborted, most likely due to timeout
+    NOT_ACQUIRED = 4,   // returned only with lockNoWait, indicates the lock was not available and was not acquired
+}
+
+enum LockType {
+    SHARED_READ = 1,
+    SHARED_WRITE = 2,
+    EXCLUSIVE = 3,
+}
+
+enum CompactionType {
+    MINOR = 1,
+    MAJOR = 2,
 }
 
 struct HiveObjectRef{
@@ -109,13 +140,43 @@ struct Role {
   3: string ownerName,
 }
 
+// Representation of a grant for a principal to a role
+struct RolePrincipalGrant {
+  1: string roleName,
+  2: string principalName,
+  3: PrincipalType principalType,
+  4: bool grantOption,
+  5: i32 grantTime,
+  6: string grantorName,
+  7: PrincipalType grantorPrincipalType
+}
+
+struct GetRoleGrantsForPrincipalRequest {
+  1: required string principal_name,
+  2: required PrincipalType principal_type
+}
+
+struct GetRoleGrantsForPrincipalResponse {
+  1: required list<RolePrincipalGrant> principalGrants;
+}
+
+struct GetPrincipalsInRoleRequest {
+  1: required string roleName;
+}
+
+struct GetPrincipalsInRoleResponse {
+  1: required list<RolePrincipalGrant> principalGrants;
+}
+
 // namespace for tables
 struct Database {
   1: string name,
   2: string description,
   3: string locationUri,
   4: map<string, string> parameters, // properties associated with the database
-  5: optional PrincipalPrivilegeSet privileges
+  5: optional PrincipalPrivilegeSet privileges,
+  6: optional string ownerName,
+  7: optional PrincipalType ownerType
 }
 
 // This object holds the information needed by SerDes
@@ -203,15 +264,15 @@ struct BooleanColumnStatsData {
 }
 
 struct DoubleColumnStatsData {
-1: required double lowValue,
-2: required double highValue,
+1: optional double lowValue,
+2: optional double highValue,
 3: required i64 numNulls,
 4: required i64 numDVs
 }
 
 struct LongColumnStatsData {
-1: required i64 lowValue,
-2: required i64 highValue,
+1: optional i64 lowValue,
+2: optional i64 highValue,
 3: required i64 numNulls,
 4: required i64 numDVs
 }
@@ -229,12 +290,26 @@ struct BinaryColumnStatsData {
 3: required i64 numNulls
 }
 
+
+struct Decimal {
+1: required binary unscaled,
+3: required i16 scale
+}
+
+struct DecimalColumnStatsData {
+1: optional Decimal lowValue,
+2: optional Decimal highValue,
+3: required i64 numNulls,
+4: required i64 numDVs
+}
+
 union ColumnStatisticsData {
 1: BooleanColumnStatsData booleanStats,
 2: LongColumnStatsData longStats,
 3: DoubleColumnStatsData doubleStats,
 4: StringColumnStatsData stringStats,
-5: BinaryColumnStatsData binaryStats
+5: BinaryColumnStatsData binaryStats,
+6: DecimalColumnStatsData decimalStats
 }
 
 struct ColumnStatisticsObj {
@@ -269,6 +344,237 @@ struct Schema {
 // accessed in hooks.
 struct EnvironmentContext {
   1: map<string, string> properties
+}
+
+// Return type for get_partitions_by_expr
+struct PartitionsByExprResult {
+  1: required list<Partition> partitions,
+  // Whether the results has any (currently, all) partitions which may or may not match
+  2: required bool hasUnknownPartitions
+}
+
+struct PartitionsByExprRequest {
+  1: required string dbName,
+  2: required string tblName,
+  3: required binary expr,
+  4: optional string defaultPartitionName,
+  5: optional i16 maxParts=-1
+}
+
+struct TableStatsResult {
+  1: required list<ColumnStatisticsObj> tableStats
+}
+
+struct PartitionsStatsResult {
+  1: required map<string, list<ColumnStatisticsObj>> partStats
+}
+
+struct TableStatsRequest {
+ 1: required string dbName,
+ 2: required string tblName,
+ 3: required list<string> colNames
+}
+
+struct PartitionsStatsRequest {
+ 1: required string dbName,
+ 2: required string tblName,
+ 3: required list<string> colNames,
+ 4: required list<string> partNames
+}
+
+// Return type for add_partitions_req
+struct AddPartitionsResult {
+  1: optional list<Partition> partitions,
+}
+
+// Request type for add_partitions_req
+struct AddPartitionsRequest {
+  1: required string dbName,
+  2: required string tblName,
+  3: required list<Partition> parts,
+  4: required bool ifNotExists,
+  5: optional bool needResult=true
+}
+
+// Return type for drop_partitions_req
+struct DropPartitionsResult {
+  1: optional list<Partition> partitions,
+}
+
+struct DropPartitionsExpr {
+  1: required binary expr;
+  2: optional i32 partArchiveLevel;
+}
+
+union RequestPartsSpec {
+  1: list<string> names;
+  2: list<DropPartitionsExpr> exprs;
+}
+
+// Request type for drop_partitions_req
+// TODO: we might want to add "bestEffort" flag; where a subset can fail
+struct DropPartitionsRequest {
+  1: required string dbName,
+  2: required string tblName,
+  3: required RequestPartsSpec parts,
+  4: optional bool deleteData,
+  5: optional bool ifExists=true, // currently verified on client
+  6: optional bool ignoreProtection,
+  7: optional EnvironmentContext environmentContext,
+  8: optional bool needResult=true
+}
+
+enum FunctionType {
+  JAVA = 1,
+}
+
+enum ResourceType {
+  JAR     = 1,
+  FILE    = 2,
+  ARCHIVE = 3,
+}
+
+struct ResourceUri {
+  1: ResourceType resourceType,
+  2: string       uri,
+}
+
+// User-defined function
+struct Function {
+  1: string           functionName,
+  2: string           dbName,
+  3: string           className,
+  4: string           ownerName,
+  5: PrincipalType    ownerType,
+  6: i32              createTime,
+  7: FunctionType     functionType,
+  8: list<ResourceUri> resourceUris,
+}
+
+// Structs for transaction and locks
+struct TxnInfo {
+    1: required i64 id,
+    2: required TxnState state,
+    3: required string user,        // used in 'show transactions' to help admins find who has open transactions
+    4: required string hostname,    // used in 'show transactions' to help admins find who has open transactions
+}
+
+struct GetOpenTxnsInfoResponse {
+    1: required i64 txn_high_water_mark,
+    2: required list<TxnInfo> open_txns,
+}
+
+struct GetOpenTxnsResponse {
+    1: required i64 txn_high_water_mark,
+    2: required set<i64> open_txns,
+}
+
+struct OpenTxnRequest {
+    1: required i32 num_txns,
+    2: required string user,
+    3: required string hostname,
+}
+
+struct OpenTxnsResponse {
+    1: required list<i64> txn_ids,
+}
+
+struct AbortTxnRequest {
+    1: required i64 txnid,
+}
+
+struct CommitTxnRequest {
+    1: required i64 txnid,
+}
+
+struct LockComponent {
+    1: required LockType type,
+    2: required LockLevel level,
+    3: required string dbname,
+    4: optional string tablename,
+    5: optional string partitionname,
+}
+
+struct LockRequest {
+    1: required list<LockComponent> component,
+    2: optional i64 txnid,
+    3: required string user,     // used in 'show locks' to help admins find who has open locks
+    4: required string hostname, // used in 'show locks' to help admins find who has open locks
+}
+
+struct LockResponse {
+    1: required i64 lockid,
+    2: required LockState state,
+}
+
+struct CheckLockRequest {
+    1: required i64 lockid,
+}
+
+struct UnlockRequest {
+    1: required i64 lockid,
+}
+
+struct ShowLocksRequest {
+}
+
+struct ShowLocksResponseElement {
+    1: required i64 lockid,
+    2: required string dbname,
+    3: optional string tablename,
+    4: optional string partname,
+    5: required LockState state,
+    6: required LockType type,
+    7: optional i64 txnid,
+    8: required i64 lastheartbeat,
+    9: optional i64 acquiredat,
+    10: required string user,
+    11: required string hostname,
+}
+
+struct ShowLocksResponse {
+    1: list<ShowLocksResponseElement> locks,
+}
+
+struct HeartbeatRequest {
+    1: optional i64 lockid,
+    2: optional i64 txnid
+}
+
+struct HeartbeatTxnRangeRequest {
+    1: required i64 min,
+    2: required i64 max
+}
+
+struct HeartbeatTxnRangeResponse {
+    1: required set<i64> aborted,
+    2: required set<i64> nosuch
+}
+
+struct CompactionRequest {
+    1: required string dbname,
+    2: required string tablename,
+    3: optional string partitionname,
+    4: required CompactionType type,
+    5: optional string runas,
+}
+
+struct ShowCompactRequest {
+}
+
+struct ShowCompactResponseElement {
+    1: required string dbname,
+    2: required string tablename,
+    3: required string partitionname,
+    4: required CompactionType type,
+    5: required string state,
+    6: required string workerid,
+    7: required i64 start,
+    8: required string runAs,
+}
+
+struct ShowCompactResponse {
+    1: required list<ShowCompactResponseElement> compacts,
 }
 
 exception MetaException {
@@ -319,6 +625,23 @@ exception InvalidInputException {
   1: string message
 }
 
+// Transaction and lock exceptions
+exception NoSuchTxnException {
+    1: string message
+}
+
+exception TxnAbortedException {
+    1: string message
+}
+
+exception TxnOpenException {
+    1: string message
+}
+
+exception NoSuchLockException {
+    1: string message
+}
+
 /**
 * This interface is live.
 */
@@ -330,7 +653,7 @@ service ThriftHiveMetastore extends fb303.FacebookService
   list<string> get_databases(1:string pattern) throws(1:MetaException o1)
   list<string> get_all_databases() throws(1:MetaException o1)
   void alter_database(1:string dbname, 2:Database db) throws(1:MetaException o1, 2:NoSuchObjectException o2)
-  
+
   // returns the type with given name (make seperate calls for the dependent types if needed)
   Type get_type(1:string name)  throws(1:MetaException o1, 2:NoSuchObjectException o2)
   bool create_type(1:Type type) throws(1:AlreadyExistsException o1, 2:InvalidObjectException o2, 3:MetaException o3)
@@ -417,7 +740,7 @@ service ThriftHiveMetastore extends fb303.FacebookService
                        throws (1:InvalidOperationException o1, 2:MetaException o2)
   void alter_table_with_environment_context(1:string dbname, 2:string tbl_name,
       3:Table new_tbl, 4:EnvironmentContext environment_context)
-      throws (1:InvalidOperationException o1, 2:MetaException o2) 
+      throws (1:InvalidOperationException o1, 2:MetaException o2)
   // the following applies to only tables that have partitions
   // * See notes on DDL_TIME
   Partition add_partition(1:Partition new_part)
@@ -430,6 +753,8 @@ service ThriftHiveMetastore extends fb303.FacebookService
                        throws(1:InvalidObjectException o1, 2:AlreadyExistsException o2, 3:MetaException o3)
   Partition append_partition(1:string db_name, 2:string tbl_name, 3:list<string> part_vals)
                        throws (1:InvalidObjectException o1, 2:AlreadyExistsException o2, 3:MetaException o3)
+  AddPartitionsResult add_partitions_req(1:AddPartitionsRequest request)
+                       throws(1:InvalidObjectException o1, 2:AlreadyExistsException o2, 3:MetaException o3)
   Partition append_partition_with_environment_context(1:string db_name, 2:string tbl_name,
       3:list<string> part_vals, 4:EnvironmentContext environment_context)
                        throws (1:InvalidObjectException o1, 2:AlreadyExistsException o2, 3:MetaException o3)
@@ -448,10 +773,17 @@ service ThriftHiveMetastore extends fb303.FacebookService
   bool drop_partition_by_name_with_environment_context(1:string db_name, 2:string tbl_name,
       3:string part_name, 4:bool deleteData, 5:EnvironmentContext environment_context)
                        throws(1:NoSuchObjectException o1, 2:MetaException o2)
+  DropPartitionsResult drop_partitions_req(1: DropPartitionsRequest req)
+                       throws(1:NoSuchObjectException o1, 2:MetaException o2)
+
   Partition get_partition(1:string db_name, 2:string tbl_name, 3:list<string> part_vals)
                        throws(1:MetaException o1, 2:NoSuchObjectException o2)
+  Partition exchange_partition(1:map<string, string> partitionSpecs, 2:string source_db,
+      3:string source_table_name, 4:string dest_db, 5:string dest_table_name)
+      throws(1:MetaException o1, 2:NoSuchObjectException o2, 3:InvalidObjectException o3,
+      4:InvalidInputException o4)
 
-  Partition get_partition_with_auth(1:string db_name, 2:string tbl_name, 3:list<string> part_vals, 
+  Partition get_partition_with_auth(1:string db_name, 2:string tbl_name, 3:list<string> part_vals,
       4: string user_name, 5: list<string> group_names) throws(1:MetaException o1, 2:NoSuchObjectException o2)
 
   Partition get_partition_by_name(1:string db_name 2:string tbl_name, 3:string part_name)
@@ -461,31 +793,37 @@ service ThriftHiveMetastore extends fb303.FacebookService
   // If max parts is given then it will return only that many.
   list<Partition> get_partitions(1:string db_name, 2:string tbl_name, 3:i16 max_parts=-1)
                        throws(1:NoSuchObjectException o1, 2:MetaException o2)
-  list<Partition> get_partitions_with_auth(1:string db_name, 2:string tbl_name, 3:i16 max_parts=-1, 
-     4: string user_name, 5: list<string> group_names) throws(1:NoSuchObjectException o1, 2:MetaException o2)                       
+  list<Partition> get_partitions_with_auth(1:string db_name, 2:string tbl_name, 3:i16 max_parts=-1,
+     4: string user_name, 5: list<string> group_names) throws(1:NoSuchObjectException o1, 2:MetaException o2)
 
   list<string> get_partition_names(1:string db_name, 2:string tbl_name, 3:i16 max_parts=-1)
                        throws(1:MetaException o2)
-                       
-  // get_partition*_ps methods allow filtering by a partial partition specification, 
-  // as needed for dynamic partitions. The values that are not restricted should 
-  // be empty strings. Nulls were considered (instead of "") but caused errors in 
+
+  // get_partition*_ps methods allow filtering by a partial partition specification,
+  // as needed for dynamic partitions. The values that are not restricted should
+  // be empty strings. Nulls were considered (instead of "") but caused errors in
   // generated Python code. The size of part_vals may be smaller than the
   // number of partition columns - the unspecified values are considered the same
   // as "".
-  list<Partition> get_partitions_ps(1:string db_name 2:string tbl_name 
+  list<Partition> get_partitions_ps(1:string db_name 2:string tbl_name
   	3:list<string> part_vals, 4:i16 max_parts=-1)
                        throws(1:MetaException o1, 2:NoSuchObjectException o2)
-  list<Partition> get_partitions_ps_with_auth(1:string db_name, 2:string tbl_name, 3:list<string> part_vals, 4:i16 max_parts=-1, 
-     5: string user_name, 6: list<string> group_names) throws(1:NoSuchObjectException o1, 2:MetaException o2)                       
-  
-  list<string> get_partition_names_ps(1:string db_name, 
+  list<Partition> get_partitions_ps_with_auth(1:string db_name, 2:string tbl_name, 3:list<string> part_vals, 4:i16 max_parts=-1,
+     5: string user_name, 6: list<string> group_names) throws(1:NoSuchObjectException o1, 2:MetaException o2)
+
+  list<string> get_partition_names_ps(1:string db_name,
   	2:string tbl_name, 3:list<string> part_vals, 4:i16 max_parts=-1)
   	                   throws(1:MetaException o1, 2:NoSuchObjectException o2)
 
   // get the partitions matching the given partition filter
   list<Partition> get_partitions_by_filter(1:string db_name 2:string tbl_name
     3:string filter, 4:i16 max_parts=-1)
+                       throws(1:MetaException o1, 2:NoSuchObjectException o2)
+
+  // get the partitions matching the given partition filter
+  // unlike get_partitions_by_filter, takes serialized hive expression, and with that can work
+  // with any filter (get_partitions_by_filter only works if the filter can be pushed down to JDOQL.
+  PartitionsByExprResult get_partitions_by_expr(1:PartitionsByExprRequest req)
                        throws(1:MetaException o1, 2:NoSuchObjectException o2)
 
   // get partitions give a list of partition names
@@ -497,8 +835,8 @@ service ThriftHiveMetastore extends fb303.FacebookService
   // * See notes on DDL_TIME
   void alter_partition(1:string db_name, 2:string tbl_name, 3:Partition new_part)
                        throws (1:InvalidOperationException o1, 2:MetaException o2)
-                       
-  // change a list of partitions. All partitions are altered atomically and all 
+
+  // change a list of partitions. All partitions are altered atomically and all
   // prehooks are fired together followed by all post hooks
   void alter_partitions(1:string db_name, 2:string tbl_name, 3:list<Partition> new_parts)
                        throws (1:InvalidOperationException o1, 2:MetaException o2)
@@ -525,7 +863,7 @@ service ThriftHiveMetastore extends fb303.FacebookService
   // thrown.
   string get_config_value(1:string name, 2:string defaultValue)
                           throws(1:ConfigValSecurityException o1)
-                          
+
   // converts a partition name into a partition values array
   list<string> partition_name_to_vals(1: string part_name)
                           throws(1: MetaException o1)
@@ -533,23 +871,23 @@ service ThriftHiveMetastore extends fb303.FacebookService
   // the partition cols to the values)
   map<string, string> partition_name_to_spec(1: string part_name)
                           throws(1: MetaException o1)
-  
+
   void markPartitionForEvent(1:string db_name, 2:string tbl_name, 3:map<string,string> part_vals,
-                  4:PartitionEventType eventType) throws (1: MetaException o1, 2: NoSuchObjectException o2, 
+                  4:PartitionEventType eventType) throws (1: MetaException o1, 2: NoSuchObjectException o2,
                   3: UnknownDBException o3, 4: UnknownTableException o4, 5: UnknownPartitionException o5,
-                  6: InvalidPartitionException o6) 
-  bool isPartitionMarkedForEvent(1:string db_name, 2:string tbl_name, 3:map<string,string> part_vals, 
+                  6: InvalidPartitionException o6)
+  bool isPartitionMarkedForEvent(1:string db_name, 2:string tbl_name, 3:map<string,string> part_vals,
                   4: PartitionEventType eventType) throws (1: MetaException o1, 2:NoSuchObjectException o2,
                   3: UnknownDBException o3, 4: UnknownTableException o4, 5: UnknownPartitionException o5,
-                  6: InvalidPartitionException o6) 
-                         
+                  6: InvalidPartitionException o6)
+
   //index
   Index add_index(1:Index new_index, 2: Table index_table)
                        throws(1:InvalidObjectException o1, 2:AlreadyExistsException o2, 3:MetaException o3)
   void alter_index(1:string dbname, 2:string base_tbl_name, 3:string idx_name, 4:Index new_idx)
                        throws (1:InvalidOperationException o1, 2:MetaException o2)
   bool drop_index_by_name(1:string db_name, 2:string tbl_name, 3:string index_name, 4:bool deleteData)
-                       throws(1:NoSuchObjectException o1, 2:MetaException o2) 
+                       throws(1:NoSuchObjectException o1, 2:MetaException o2)
   Index get_index_by_name(1:string db_name 2:string tbl_name, 3:string index_name)
                        throws(1:MetaException o1, 2:NoSuchObjectException o2)
 
@@ -578,6 +916,10 @@ service ThriftHiveMetastore extends fb303.FacebookService
   ColumnStatistics get_partition_column_statistics(1:string db_name, 2:string tbl_name, 3:string part_name,
                4:string col_name) throws (1:NoSuchObjectException o1, 2:MetaException o2,
                3:InvalidInputException o3, 4:InvalidObjectException o4)
+  TableStatsResult get_table_statistics_req(1:TableStatsRequest request) throws
+              (1:NoSuchObjectException o1, 2:MetaException o2)
+  PartitionsStatsResult get_partitions_statistics_req(1:PartitionsStatsRequest request) throws
+              (1:NoSuchObjectException o1, 2:MetaException o2)
 
   // delete APIs attempt to delete column statistics, if found, associated with a given db_name, tbl_name, [part_name]
   // and col_name. If the delete API doesn't find the statistics record in the metastore, throws NoSuchObjectException
@@ -589,31 +931,62 @@ service ThriftHiveMetastore extends fb303.FacebookService
               (1:NoSuchObjectException o1, 2:MetaException o2, 3:InvalidObjectException o3,
                4:InvalidInputException o4)
 
+  //
+  // user-defined functions
+  //
+
+  void create_function(1:Function func)
+      throws (1:AlreadyExistsException o1,
+              2:InvalidObjectException o2,
+              3:MetaException o3,
+              4:NoSuchObjectException o4)
+
+  void drop_function(1:string dbName, 2:string funcName)
+      throws (1:NoSuchObjectException o1, 2:MetaException o3)
+
+  void alter_function(1:string dbName, 2:string funcName, 3:Function newFunc)
+      throws (1:InvalidOperationException o1, 2:MetaException o2)
+
+  list<string> get_functions(1:string dbName, 2:string pattern)
+      throws (1:MetaException o1)
+  Function get_function(1:string dbName, 2:string funcName)
+      throws (1:MetaException o1, 2:NoSuchObjectException o2)
+
   //authorization privileges
-                       
+
   bool create_role(1:Role role) throws(1:MetaException o1)
   bool drop_role(1:string role_name) throws(1:MetaException o1)
   list<string> get_role_names() throws(1:MetaException o1)
-  bool grant_role(1:string role_name, 2:string principal_name, 3:PrincipalType principal_type, 
+  bool grant_role(1:string role_name, 2:string principal_name, 3:PrincipalType principal_type,
     4:string grantor, 5:PrincipalType grantorType, 6:bool grant_option) throws(1:MetaException o1)
-  bool revoke_role(1:string role_name, 2:string principal_name, 3:PrincipalType principal_type) 
+  bool revoke_role(1:string role_name, 2:string principal_name, 3:PrincipalType principal_type)
                         throws(1:MetaException o1)
   list<Role> list_roles(1:string principal_name, 2:PrincipalType principal_type) throws(1:MetaException o1)
 
-  PrincipalPrivilegeSet get_privilege_set(1:HiveObjectRef hiveObject, 2:string user_name, 
+  // get all role-grants for users/roles that have been granted the given role
+  // Note that in the returned list of RolePrincipalGrants, the roleName is
+  // redundant as it would match the role_name argument of this function
+  GetPrincipalsInRoleResponse get_principals_in_role(1: GetPrincipalsInRoleRequest request) throws(1:MetaException o1)
+
+  // get grant information of all roles granted to the given principal
+  // Note that in the returned list of RolePrincipalGrants, the principal name,type is
+  // redundant as it would match the principal name,type arguments of this function
+  GetRoleGrantsForPrincipalResponse get_role_grants_for_principal(1: GetRoleGrantsForPrincipalRequest request) throws(1:MetaException o1)
+
+  PrincipalPrivilegeSet get_privilege_set(1:HiveObjectRef hiveObject, 2:string user_name,
     3: list<string> group_names) throws(1:MetaException o1)
-  list<HiveObjectPrivilege> list_privileges(1:string principal_name, 2:PrincipalType principal_type, 
+  list<HiveObjectPrivilege> list_privileges(1:string principal_name, 2:PrincipalType principal_type,
     3: HiveObjectRef hiveObject) throws(1:MetaException o1)
-  
+
   bool grant_privileges(1:PrivilegeBag privileges) throws(1:MetaException o1)
   bool revoke_privileges(1:PrivilegeBag privileges) throws(1:MetaException o1)
-  
+
   // this is used by metastore client to send UGI information to metastore server immediately
-  // after setting up a connection. 
+  // after setting up a connection.
   list<string> set_ugi(1:string user_name, 2:list<string> group_names) throws (1:MetaException o1)
 
   //Authentication (delegation token) interfaces
-  
+
   // get metastore server delegation token for use from the map/reduce tasks to authenticate
   // to metastore server
   string get_delegation_token(1:string token_owner, 2:string renewer_kerberos_principal_name)
@@ -624,6 +997,24 @@ service ThriftHiveMetastore extends fb303.FacebookService
 
   // method to cancel delegation token obtained from metastore server
   void cancel_delegation_token(1:string token_str_form) throws (1:MetaException o1)
+
+  // Transaction and lock management calls
+  // Get just list of open transactions
+  GetOpenTxnsResponse get_open_txns()
+  // Get list of open transactions with state (open, aborted)
+  GetOpenTxnsInfoResponse get_open_txns_info()
+  OpenTxnsResponse open_txns(1:OpenTxnRequest rqst)
+  void abort_txn(1:AbortTxnRequest rqst) throws (1:NoSuchTxnException o1)
+  void commit_txn(1:CommitTxnRequest rqst) throws (1:NoSuchTxnException o1, 2:TxnAbortedException o2)
+  LockResponse lock(1:LockRequest rqst) throws (1:NoSuchTxnException o1, 2:TxnAbortedException o2)
+  LockResponse check_lock(1:CheckLockRequest rqst)
+    throws (1:NoSuchTxnException o1, 2:TxnAbortedException o2, 3:NoSuchLockException o3)
+  void unlock(1:UnlockRequest rqst) throws (1:NoSuchLockException o1, 2:TxnOpenException o2)
+  ShowLocksResponse show_locks(1:ShowLocksRequest rqst)
+  void heartbeat(1:HeartbeatRequest ids) throws (1:NoSuchLockException o1, 2:NoSuchTxnException o2, 3:TxnAbortedException o3)
+  HeartbeatTxnRangeResponse heartbeat_txn_range(1:HeartbeatTxnRangeRequest txns)
+  void compact(1:CompactionRequest rqst) 
+  ShowCompactResponse show_compact(1:ShowCompactRequest rqst)
 }
 
 // * Note about the DDL_TIME: When creating or altering a table or a partition,
@@ -638,6 +1029,12 @@ const string IS_ARCHIVED = "is_archived",
 // is dropped, this directory will be deleted
 const string ORIGINAL_LOCATION = "original_location",
 
+// Whether or not the table is considered immutable - immutable tables can only be
+// overwritten or created if unpartitioned, or if partitioned, partitions inside them
+// can only be overwritten or created. Immutability supports write-once and replace
+// semantics, but not append.
+const string IS_IMMUTABLE = "immutable",
+
 // these should be needed only for backward compatibility with filestore
 const string META_TABLE_COLUMNS   = "columns",
 const string META_TABLE_COLUMN_TYPES   = "columns.types",
@@ -649,6 +1046,7 @@ const string META_TABLE_DB        = "db",
 const string META_TABLE_LOCATION  = "location",
 const string META_TABLE_SERDE     = "serde",
 const string META_TABLE_PARTITION_COLUMNS = "partition_columns",
+const string META_TABLE_PARTITION_COLUMN_TYPES = "partition_columns.types",
 const string FILE_INPUT_FORMAT    = "file.inputformat",
 const string FILE_OUTPUT_FORMAT   = "file.outputformat",
 const string META_TABLE_STORAGE   = "storage_handler",

@@ -32,6 +32,7 @@ import org.apache.hadoop.hive.common.classification.InterfaceAudience;
 import org.apache.hadoop.hive.common.classification.InterfaceStability;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
@@ -44,13 +45,13 @@ public class RetryingHMSHandler implements InvocationHandler {
     new MetaStoreInit.MetaStoreInitData();
   private final HiveConf hiveConf;
 
-  protected RetryingHMSHandler(HiveConf hiveConf, String name) throws MetaException {
+  protected RetryingHMSHandler(final HiveConf hiveConf, final String name) throws MetaException {
     this.hiveConf = hiveConf;
 
     // This has to be called before initializing the instance of HMSHandler
     init();
 
-    this.base = (IHMSHandler) new HiveMetaStore.HMSHandler(name, hiveConf);
+    this.base = new HiveMetaStore.HMSHandler(name, hiveConf);
   }
 
   public static IHMSHandler getProxy(HiveConf hiveConf, String name) throws MetaException {
@@ -74,8 +75,10 @@ public class RetryingHMSHandler implements InvocationHandler {
     base.setConf(getConf());
   }
 
+
   @Override
-  public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+  public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
+
     Object ret = null;
 
     boolean gotNewConnectUrl = false;
@@ -126,6 +129,12 @@ public class RetryingHMSHandler implements InvocationHandler {
           // Due to reflection, the jdo exception is wrapped in
           // invocationTargetException
           caughtException = e.getCause();
+        } else if (e.getCause() instanceof NoSuchObjectException || e.getTargetException().getCause() instanceof NoSuchObjectException) {
+          String methodName = method.getName();
+          if (!methodName.startsWith("get_table") && !methodName.startsWith("get_partition") && !methodName.startsWith("get_function")) {
+            LOG.error(ExceptionUtils.getStackTrace(e.getCause()));
+          }
+          throw e.getCause();
         } else if (e.getCause() instanceof MetaException && e.getCause().getCause() != null
             && e.getCause().getCause() instanceof javax.jdo.JDOException) {
           // The JDOException may be wrapped further in a MetaException
@@ -137,7 +146,7 @@ public class RetryingHMSHandler implements InvocationHandler {
       }
 
       if (retryCount >= retryLimit) {
-        LOG.error(ExceptionUtils.getStackTrace(caughtException));
+        LOG.error("HMSHandler Fatal error: " + ExceptionUtils.getStackTrace(caughtException));
         // Since returning exceptions with a nested "cause" can be a problem in
         // Thrift, we are stuffing the stack trace into the message itself.
         throw new MetaException(ExceptionUtils.getStackTrace(caughtException));
@@ -146,9 +155,10 @@ public class RetryingHMSHandler implements InvocationHandler {
       assert (retryInterval >= 0);
       retryCount++;
       LOG.error(
-          String.format(
-              "JDO datastore error. Retrying HMSHandler " +
-                  "after %d ms (attempt %d of %d)", retryInterval, retryCount, retryLimit));
+        String.format(
+          "Retrying HMSHandler after %d ms (attempt %d of %d)", retryInterval, retryCount, retryLimit) +
+          " with error: " + ExceptionUtils.getStackTrace(caughtException));
+
       Thread.sleep(retryInterval);
       // If we have a connection error, the JDO connection URL hook might
       // provide us with a new URL to access the datastore.

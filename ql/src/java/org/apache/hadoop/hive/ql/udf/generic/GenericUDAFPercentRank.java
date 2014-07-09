@@ -40,19 +40,21 @@ import org.apache.hadoop.io.IntWritable;
 									"(rank of row in its partition - 1) / (number of rows in the partition - 1)"
 								),
 		supportsWindow = false,
-		pivotResult = true
+		pivotResult = true,
+		rankingFunction = true,
+		impliesOrder = true
 )
 public class GenericUDAFPercentRank extends GenericUDAFRank
 {
 	static final Log LOG = LogFactory.getLog(GenericUDAFPercentRank.class.getName());
 
 	@Override
-  protected GenericUDAFRankEvaluator createEvaluator()
+  protected GenericUDAFAbstractRankEvaluator createEvaluator()
 	{
 		return new GenericUDAFPercentRankEvaluator();
 	}
 
-	public static class GenericUDAFPercentRankEvaluator extends GenericUDAFRankEvaluator
+	public static class GenericUDAFPercentRankEvaluator extends GenericUDAFAbstractRankEvaluator
 	{
 		@Override
 		public ObjectInspector init(Mode m, ObjectInspector[] parameters) throws HiveException

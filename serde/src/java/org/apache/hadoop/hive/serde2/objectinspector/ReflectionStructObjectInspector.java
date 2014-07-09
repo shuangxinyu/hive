@@ -42,10 +42,16 @@ public class ReflectionStructObjectInspector extends
    *
    */
   public static class MyField implements StructField {
+    protected int fieldID;
     protected Field field;
     protected ObjectInspector fieldObjectInspector;
 
-    public MyField(Field field, ObjectInspector fieldObjectInspector) {
+    protected MyField() {
+      super();
+    }
+
+    public MyField(int fieldID, Field field, ObjectInspector fieldObjectInspector) {
+      this.fieldID = fieldID;
       this.field = field;
       this.fieldObjectInspector = fieldObjectInspector;
     }
@@ -56,6 +62,10 @@ public class ReflectionStructObjectInspector extends
 
     public ObjectInspector getFieldObjectInspector() {
       return fieldObjectInspector;
+    }
+
+    public int getFieldID() {
+      return fieldID;
     }
 
     public String getFieldComment() {
@@ -119,7 +129,7 @@ public class ReflectionStructObjectInspector extends
     for (int i = 0; i < reflectionFields.length; i++) {
       if (!shouldIgnoreField(reflectionFields[i].getName())) {
         reflectionFields[i].setAccessible(true);
-        fields.add(new MyField(reflectionFields[i], structFieldObjectInspectors
+        fields.add(new MyField(i, reflectionFields[i], structFieldObjectInspectors
             .get(used++)));
       }
     }

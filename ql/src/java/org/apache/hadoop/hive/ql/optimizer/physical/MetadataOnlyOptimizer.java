@@ -49,9 +49,12 @@ import org.apache.hadoop.hive.ql.lib.Rule;
 import org.apache.hadoop.hive.ql.lib.RuleRegExp;
 import org.apache.hadoop.hive.ql.parse.ParseContext;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.apache.hadoop.hive.ql.plan.MapWork;
 import org.apache.hadoop.hive.ql.plan.MapredWork;
 import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.hive.ql.plan.PartitionDesc;
+import org.apache.hadoop.hive.ql.plan.TableScanDesc;
+import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.NullStructSerDe;
 
 /**
@@ -127,12 +130,15 @@ public class MetadataOnlyOptimizer implements PhysicalPlanResolver {
     public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx,
         Object... nodeOutputs) throws SemanticException {
       TableScanOperator node = (TableScanOperator) nd;
+      TableScanOperator tsOp = (TableScanOperator) nd;
       WalkerCtx walkerCtx = (WalkerCtx) procCtx;
-      if (((node.getNeededColumnIDs() == null) || (node.getNeededColumnIDs().size() == 0))
-          && ((node.getConf() == null) ||
-              (node.getConf().getVirtualCols() == null) ||
-              (node.getConf().getVirtualCols().isEmpty()))) {
-        walkerCtx.setMayBeMetadataOnly(node);
+      List<Integer> colIDs = tsOp.getNeededColumnIDs();
+      TableScanDesc desc = tsOp.getConf();
+      boolean noColNeeded = (colIDs == null) || (colIDs.isEmpty());
+      boolean noVCneeded = (desc == null) || (desc.getVirtualCols() == null)
+                             || (desc.getVirtualCols().isEmpty());
+      if (noColNeeded && noVCneeded) {
+        walkerCtx.setMayBeMetadataOnly(tsOp);
       }
       return nd;
     }
@@ -171,7 +177,7 @@ public class MetadataOnlyOptimizer implements PhysicalPlanResolver {
     Dispatcher disp = new MetadataOnlyTaskDispatcher(pctx);
     GraphWalker ogw = new DefaultGraphWalker(disp);
     ArrayList<Node> topNodes = new ArrayList<Node>();
-    topNodes.addAll(pctx.rootTasks);
+    topNodes.addAll(pctx.getRootTasks());
     ogw.startWalking(topNodes, null);
     return pctx;
   }
@@ -188,7 +194,7 @@ public class MetadataOnlyOptimizer implements PhysicalPlanResolver {
       physicalContext = context;
     }
 
-    private String getAliasForTableScanOperator(MapredWork work,
+    private String getAliasForTableScanOperator(MapWork work,
         TableScanOperator tso) {
 
       for (Map.Entry<String, Operator<? extends OperatorDesc>> entry :
@@ -205,13 +211,13 @@ public class MetadataOnlyOptimizer implements PhysicalPlanResolver {
       if (desc != null) {
         desc.setInputFileFormatClass(OneNullRowInputFormat.class);
         desc.setOutputFileFormatClass(HiveIgnoreKeyTextOutputFormat.class);
-        desc.setDeserializerClass(NullStructSerDe.class);
-        desc.setSerdeClassName(NullStructSerDe.class.getName());
+        desc.getProperties().setProperty(serdeConstants.SERIALIZATION_LIB,
+          NullStructSerDe.class.getName());
       }
       return desc;
     }
 
-    private List<String> getPathsForAlias(MapredWork work, String alias) {
+    private List<String> getPathsForAlias(MapWork work, String alias) {
       List<String> paths = new ArrayList<String>();
 
       for (Map.Entry<String, ArrayList<String>> entry : work.getPathToAliases().entrySet()) {
@@ -223,7 +229,9 @@ public class MetadataOnlyOptimizer implements PhysicalPlanResolver {
       return paths;
     }
 
-    private void processAlias(MapredWork work, String alias) {
+    private void processAlias(MapWork work, String alias) {
+      work.setUseOneNullRowInputFormat(true);
+
       // Change the alias partition desc
       PartitionDesc aliasPartn = work.getAliasToPartnInfo().get(alias);
       changePartitionToMetadataOnly(aliasPartn);
@@ -232,7 +240,7 @@ public class MetadataOnlyOptimizer implements PhysicalPlanResolver {
       for (String path : paths) {
         PartitionDesc partDesc = work.getPathToPartitionInfo().get(path);
         PartitionDesc newPartition = changePartitionToMetadataOnly(partDesc);
-        Path fakePath = new Path(physicalContext.getContext().getMRTmpFileURI()
+        Path fakePath = new Path(physicalContext.getContext().getMRTmpPath()
             + newPartition.getTableName()
             + encode(newPartition.getPartSpec()));
         work.getPathToPartitionInfo().remove(path);
@@ -247,24 +255,11 @@ public class MetadataOnlyOptimizer implements PhysicalPlanResolver {
       return partSpec.toString().replaceAll("[:/#\\?]", "_");
     }
 
-    private void convertToMetadataOnlyQuery(MapredWork work,
-        TableScanOperator tso) {
-      String alias = getAliasForTableScanOperator(work, tso);
-      processAlias(work, alias);
-    }
-
     @Override
     public Object dispatch(Node nd, Stack<Node> stack, Object... nodeOutputs)
         throws SemanticException {
       Task<? extends Serializable> task = (Task<? extends Serializable>) nd;
 
-      Collection<Operator<? extends OperatorDesc>> topOperators
-        = task.getTopOperators();
-      if (topOperators.size() == 0) {
-        return null;
-      }
-
-      LOG.info("Looking for table scans where optimization is applicable");
       // create a the context for walking operators
       ParseContext parseContext = physicalContext.getParseContext();
       WalkerCtx walkerCtx = new WalkerCtx();
@@ -277,38 +272,52 @@ public class MetadataOnlyOptimizer implements PhysicalPlanResolver {
         GroupByOperator.getOperatorName() + "%.*" + FileSinkOperator.getOperatorName() + "%"),
         new FileSinkProcessor());
 
-      // The dispatcher fires the processor corresponding to the closest
-      // matching rule and passes the context along
-      Dispatcher disp = new DefaultRuleDispatcher(null, opRules, walkerCtx);
-      GraphWalker ogw = new PreOrderWalker(disp);
+      for (MapWork mapWork: task.getMapWork()) {
+        LOG.debug("Looking at: "+mapWork.getName());
+        Collection<Operator<? extends OperatorDesc>> topOperators
+          = mapWork.getAliasToWork().values();
+        if (topOperators.size() == 0) {
+          LOG.debug("No top operators");
+          return null;
+        }
 
-      // Create a list of topOp nodes
-      ArrayList<Node> topNodes = new ArrayList<Node>();
-      // Get the top Nodes for this map-reduce task
-      for (Operator<? extends OperatorDesc>
-           workOperator : topOperators) {
-        if (parseContext.getTopOps().values().contains(workOperator)) {
-          topNodes.add(workOperator);
+        LOG.info("Looking for table scans where optimization is applicable");
+
+        // The dispatcher fires the processor corresponding to the closest
+        // matching rule and passes the context along
+        Dispatcher disp = new DefaultRuleDispatcher(null, opRules, walkerCtx);
+        GraphWalker ogw = new PreOrderWalker(disp);
+
+        // Create a list of topOp nodes
+        ArrayList<Node> topNodes = new ArrayList<Node>();
+        // Get the top Nodes for this map-reduce task
+        for (Operator<? extends OperatorDesc>
+               workOperator : topOperators) {
+          if (parseContext.getTopOps().values().contains(workOperator)) {
+            topNodes.add(workOperator);
+          }
+        }
+
+        Operator<? extends OperatorDesc> reducer = task.getReducer(mapWork);
+        if (reducer != null) {
+          topNodes.add(reducer);
+        }
+
+        ogw.startWalking(topNodes, null);
+
+        LOG.info(String.format("Found %d metadata only table scans",
+            walkerCtx.getMetadataOnlyTableScans().size()));
+        Iterator<TableScanOperator> iterator
+          = walkerCtx.getMetadataOnlyTableScans().iterator();
+
+        while (iterator.hasNext()) {
+          TableScanOperator tso = iterator.next();
+          ((TableScanDesc)tso.getConf()).setIsMetadataOnly(true);
+          String alias = getAliasForTableScanOperator(mapWork, tso);
+          LOG.info("Metadata only table scan for " + alias);
+          processAlias(mapWork, alias);
         }
       }
-
-      if (task.getReducer() != null) {
-        topNodes.add(task.getReducer());
-      }
-
-      ogw.startWalking(topNodes, null);
-
-      LOG.info(String.format("Found %d metadata only table scans",
-          walkerCtx.getMetadataOnlyTableScans().size()));
-      Iterator<TableScanOperator> iterator
-        = walkerCtx.getMetadataOnlyTableScans().iterator();
-
-      while (iterator.hasNext()) {
-        TableScanOperator tso = iterator.next();
-        LOG.info("Metadata only table scan for " + tso.getConf().getAlias());
-        convertToMetadataOnlyQuery((MapredWork) task.getWork(), tso);
-      }
-
       return null;
     }
   }

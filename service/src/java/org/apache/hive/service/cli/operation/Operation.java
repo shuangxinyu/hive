@@ -17,33 +17,56 @@
  */
 package org.apache.hive.service.cli.operation;
 
+import java.util.EnumSet;
+import java.util.concurrent.Future;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hive.service.cli.FetchOrientation;
 import org.apache.hive.service.cli.HiveSQLException;
 import org.apache.hive.service.cli.OperationHandle;
 import org.apache.hive.service.cli.OperationState;
+import org.apache.hive.service.cli.OperationStatus;
 import org.apache.hive.service.cli.OperationType;
 import org.apache.hive.service.cli.RowSet;
 import org.apache.hive.service.cli.TableSchema;
 import org.apache.hive.service.cli.session.HiveSession;
-
-
+import org.apache.hive.service.cli.thrift.TProtocolVersion;
 
 public abstract class Operation {
-  private final HiveSession parentSession;
+  protected final HiveSession parentSession;
   private OperationState state = OperationState.INITIALIZED;
   private final OperationHandle opHandle;
   private HiveConf configuration;
   public static final Log LOG = LogFactory.getLog(Operation.class.getName());
   public static final long DEFAULT_FETCH_MAX_ROWS = 100;
   protected boolean hasResultSet;
+  protected volatile HiveSQLException operationException;
+  protected final boolean runAsync;
+  protected volatile Future<?> backgroundHandle;
 
-  protected Operation(HiveSession parentSession, OperationType opType) {
+  protected static final EnumSet<FetchOrientation> DEFAULT_FETCH_ORIENTATION_SET =
+      EnumSet.of(FetchOrientation.FETCH_NEXT,FetchOrientation.FETCH_FIRST);
+
+  protected Operation(HiveSession parentSession, OperationType opType, boolean runInBackground) {
     super();
     this.parentSession = parentSession;
-    opHandle = new OperationHandle(opType);
+    this.runAsync = runInBackground;
+    this.opHandle = new OperationHandle(opType, parentSession.getProtocolVersion());
+  }
+
+  public Future<?> getBackgroundHandle() {
+    return backgroundHandle;
+  }
+
+  protected void setBackgroundHandle(Future<?> backgroundHandle) {
+    this.backgroundHandle = backgroundHandle;
+  }
+
+  public boolean shouldRunAsync() {
+    return runAsync;
   }
 
   public void setConfiguration(HiveConf configuration) {
@@ -62,12 +85,16 @@ public abstract class Operation {
     return opHandle;
   }
 
+  public TProtocolVersion getProtocolVersion() {
+    return opHandle.getProtocolVersion();
+  }
+
   public OperationType getType() {
     return opHandle.getOperationType();
   }
 
-  public OperationState getState() {
-    return state;
+  public OperationStatus getStatus() {
+    return new OperationStatus(state, operationException);
   }
 
   public boolean hasResultSet() {
@@ -85,6 +112,10 @@ public abstract class Operation {
     return this.state;
   }
 
+  protected void setOperationException(HiveSQLException operationException) {
+    this.operationException = operationException;
+  }
+
   protected final void assertState(OperationState state) throws HiveSQLException {
     if (this.state != state) {
       throw new HiveSQLException("Expected state " + state + ", but found " + this.state);
@@ -92,19 +123,19 @@ public abstract class Operation {
   }
 
   public boolean isRunning() {
-    return OperationState.RUNNING.equals(getState());
+    return OperationState.RUNNING.equals(state);
   }
 
   public boolean isFinished() {
-    return OperationState.FINISHED.equals(getState());
+    return OperationState.FINISHED.equals(state);
   }
 
   public boolean isCanceled() {
-    return OperationState.CANCELED.equals(getState());
+    return OperationState.CANCELED.equals(state);
   }
 
   public boolean isFailed() {
-    return OperationState.ERROR.equals(getState());
+    return OperationState.ERROR.equals(state);
   }
 
   public abstract void run() throws HiveSQLException;
@@ -123,5 +154,38 @@ public abstract class Operation {
 
   public RowSet getNextRowSet() throws HiveSQLException {
     return getNextRowSet(FetchOrientation.FETCH_NEXT, DEFAULT_FETCH_MAX_ROWS);
+  }
+
+  /**
+   * Verify if the given fetch orientation is part of the default orientation types.
+   * @param orientation
+   * @throws HiveSQLException
+   */
+  protected void validateDefaultFetchOrientation(FetchOrientation orientation)
+      throws HiveSQLException {
+    validateFetchOrientation(orientation, DEFAULT_FETCH_ORIENTATION_SET);
+  }
+
+  /**
+   * Verify if the given fetch orientation is part of the supported orientation types.
+   * @param orientation
+   * @param supportedOrientations
+   * @throws HiveSQLException
+   */
+  protected void validateFetchOrientation(FetchOrientation orientation,
+      EnumSet<FetchOrientation> supportedOrientations) throws HiveSQLException {
+    if (!supportedOrientations.contains(orientation)) {
+      throw new HiveSQLException("The fetch type " + orientation.toString() +
+          " is not supported for this resultset", "HY106");
+    }
+  }
+
+  protected HiveSQLException toSQLException(String prefix, CommandProcessorResponse response) {
+    HiveSQLException ex = new HiveSQLException(prefix + ": " + response.getErrorMessage(),
+        response.getSQLState(), response.getResponseCode());
+    if (response.getException() != null) {
+      ex.initCause(response.getException());
+    }
+    return ex;
   }
 }

@@ -21,14 +21,15 @@ package org.apache.hadoop.hive.ql.plan;
 import org.apache.hadoop.hive.ql.security.authorization.Privilege;
 
 public enum HiveOperation {
-
   EXPLAIN("EXPLAIN", null, null),
   LOAD("LOAD", null, new Privilege[]{Privilege.ALTER_DATA}),
   EXPORT("EXPORT", new Privilege[]{Privilege.SELECT}, null),
   IMPORT("IMPORT", null, new Privilege[]{Privilege.ALTER_METADATA, Privilege.ALTER_DATA}),
-  CREATEDATABASE("CREATEDATABASE", null, null),
-  DROPDATABASE("DROPDATABASE", null, null),
-  SWITCHDATABASE("SWITCHDATABASE", null, null),
+  CREATEDATABASE("CREATEDATABASE", null, new Privilege[]{Privilege.CREATE}),
+  DROPDATABASE("DROPDATABASE", null, new Privilege[]{Privilege.DROP}),
+  SWITCHDATABASE("SWITCHDATABASE", new Privilege[]{Privilege.SELECT}, null),
+  LOCKDB("LOCKDATABASE",  new Privilege[]{Privilege.LOCK}, null),
+  UNLOCKDB("UNLOCKDATABASE",  new Privilege[]{Privilege.LOCK}, null),
   DROPTABLE ("DROPTABLE", null, new Privilege[]{Privilege.DROP}),
   DESCTABLE("DESCTABLE", null, null),
   DESCFUNCTION("DESCFUNCTION", null, null),
@@ -39,7 +40,8 @@ public enum HiveOperation {
   ALTERTABLE_RENAMEPART("ALTERTABLE_RENAMEPART", new Privilege[]{Privilege.DROP}, new Privilege[]{Privilege.CREATE}),
   ALTERTABLE_RENAME("ALTERTABLE_RENAME", new Privilege[]{Privilege.ALTER_METADATA}, null),
   ALTERTABLE_DROPPARTS("ALTERTABLE_DROPPARTS", new Privilege[]{Privilege.DROP}, null),
-  ALTERTABLE_ADDPARTS("ALTERTABLE_ADDPARTS", new Privilege[]{Privilege.CREATE}, null),
+  // The location is input and table is output for alter-table add partitions
+  ALTERTABLE_ADDPARTS("ALTERTABLE_ADDPARTS", null, new Privilege[]{Privilege.CREATE}),
   ALTERTABLE_TOUCH("ALTERTABLE_TOUCH", null, null),
   ALTERTABLE_ARCHIVE("ALTERTABLE_ARCHIVE", new Privilege[]{Privilege.ALTER_DATA}, null),
   ALTERTABLE_UNARCHIVE("ALTERTABLE_UNARCHIVE", new Privilege[]{Privilege.ALTER_DATA}, null),
@@ -67,8 +69,10 @@ public enum HiveOperation {
   SHOWLOCKS("SHOWLOCKS", null, null),
   CREATEFUNCTION("CREATEFUNCTION", null, null),
   DROPFUNCTION("DROPFUNCTION", null, null),
-  CREATEVIEW("CREATEVIEW", null, null),
-  DROPVIEW("DROPVIEW", null, null),
+  CREATEMACRO("CREATEMACRO", null, null),
+  DROPMACRO("DROPMACRO", null, null),
+  CREATEVIEW("CREATEVIEW", new Privilege[]{Privilege.SELECT}, new Privilege[]{Privilege.CREATE}),
+  DROPVIEW("DROPVIEW", null, new Privilege[]{Privilege.DROP}),
   CREATEINDEX("CREATEINDEX", null, null),
   DROPINDEX("DROPINDEX", null, null),
   ALTERINDEX_REBUILD("ALTERINDEX_REBUILD", null, null),
@@ -83,6 +87,8 @@ public enum HiveOperation {
   SHOW_GRANT("SHOW_GRANT", null, null),
   GRANT_ROLE("GRANT_ROLE", null, null),
   REVOKE_ROLE("REVOKE_ROLE", null, null),
+  SHOW_ROLES("SHOW_ROLES", null, null),
+  SHOW_ROLE_PRINCIPALS("SHOW_ROLE_PRINCIPALS", null, null),
   SHOW_ROLE_GRANT("SHOW_ROLE_GRANT", null, null),
   ALTERTABLE_PROTECTMODE("ALTERTABLE_PROTECTMODE", new Privilege[]{Privilege.ALTER_METADATA}, null),
   ALTERPARTITION_PROTECTMODE("ALTERPARTITION_PROTECTMODE", new Privilege[]{Privilege.ALTER_METADATA}, null),
@@ -96,12 +102,19 @@ public enum HiveOperation {
   QUERY("QUERY", new Privilege[]{Privilege.SELECT}, new Privilege[]{Privilege.ALTER_DATA, Privilege.CREATE}),
   ALTERINDEX_PROPS("ALTERINDEX_PROPS",null, null),
   ALTERDATABASE("ALTERDATABASE", null, null),
+  ALTERDATABASE_OWNER("ALTERDATABASE_OWNER", null, null),
   DESCDATABASE("DESCDATABASE", null, null),
   ALTERTABLE_MERGEFILES("ALTER_TABLE_MERGE", new Privilege[] { Privilege.SELECT }, new Privilege[] { Privilege.ALTER_DATA }),
   ALTERPARTITION_MERGEFILES("ALTER_PARTITION_MERGE", new Privilege[] { Privilege.SELECT }, new Privilege[] { Privilege.ALTER_DATA }),
   ALTERTABLE_SKEWED("ALTERTABLE_SKEWED", new Privilege[] {Privilege.ALTER_METADATA}, null),
   ALTERTBLPART_SKEWED_LOCATION("ALTERTBLPART_SKEWED_LOCATION",
       new Privilege[] {Privilege.ALTER_DATA}, null),
+  ALTERTABLE_PARTCOLTYPE("ALTERTABLE_PARTCOLTYPE", new Privilege[] { Privilege.SELECT }, new Privilege[] { Privilege.ALTER_DATA }),
+  ALTERVIEW_RENAME("ALTERVIEW_RENAME", new Privilege[] {Privilege.ALTER_METADATA}, null),
+  ALTERTABLE_COMPACT("ALTERTABLE_COMPACT", new Privilege[]{Privilege.SELECT},
+      new Privilege[]{Privilege.ALTER_DATA}),
+  SHOW_COMPACTIONS("SHOW COMPACTIONS", null, null),
+  SHOW_TRANSACTIONS("SHOW TRANSACTIONS", null, null);
   ;
 
   private String operationName;

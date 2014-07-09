@@ -23,13 +23,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.hadoop.hive.serde2.SerDeStatsStruct;
+import org.apache.hadoop.hive.serde2.StructObject;
 import org.apache.hadoop.hive.serde2.lazy.ByteArrayRef;
 import org.apache.hadoop.hive.serde2.lazy.LazyObjectBase;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 
-public abstract class ColumnarStructBase implements SerDeStatsStruct {
+public abstract class ColumnarStructBase implements StructObject, SerDeStatsStruct {
 
   class FieldInfo {
     LazyObjectBase field;
@@ -67,6 +68,7 @@ public abstract class ColumnarStructBase implements SerDeStatsStruct {
       if (col != null) {
         rawBytesField = col;
         inited = false;
+        fieldSkipped = false;
       } else {
         // select columns that actually do not exist in the file.
         fieldSkipped = true;
@@ -122,21 +124,12 @@ public abstract class ColumnarStructBase implements SerDeStatsStruct {
   private FieldInfo[] fieldInfoList = null;
   private ArrayList<Object> cachedList;
 
-  public ColumnarStructBase(ObjectInspector oi,
-      ArrayList<Integer> notSkippedColumnIDs) {
+  public ColumnarStructBase(ObjectInspector oi, List<Integer> notSkippedColumnIDs) {
     List<? extends StructField> fieldRefs = ((StructObjectInspector) oi)
         .getAllStructFieldRefs();
     int num = fieldRefs.size();
 
     fieldInfoList = new FieldInfo[num];
-
-    // if no columns is set to be skipped, add all columns in
-    // 'notSkippedColumnIDs'
-    if (notSkippedColumnIDs == null || notSkippedColumnIDs.size() == 0) {
-      for (int i = 0; i < num; i++) {
-        notSkippedColumnIDs.add(i);
-      }
-    }
 
     for (int i = 0; i < num; i++) {
       ObjectInspector foi = fieldRefs.get(i).getFieldObjectInspector();

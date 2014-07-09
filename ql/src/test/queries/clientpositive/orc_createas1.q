@@ -1,5 +1,6 @@
 set mapred.max.split.size=100;
 set mapred.min.split.size=1;
+set hive.input.format=org.apache.hadoop.hive.ql.io.HiveInputFormat;
 
 DROP TABLE orc_createas1a;
 DROP TABLE orc_createas1b;
@@ -20,9 +21,9 @@ CREATE TABLE orc_createas1b
     STORED AS ORC AS
     SELECT * FROM src;
 
-EXPLAIN SELECT * FROM orc_createas1b LIMIT 5;
+EXPLAIN SELECT * FROM orc_createas1b ORDER BY key LIMIT 5;
 
-SELECT * FROM orc_createas1b LIMIT 5;
+SELECT * FROM orc_createas1b ORDER BY key LIMIT 5;
 
 EXPLAIN
     CREATE TABLE orc_createas1c

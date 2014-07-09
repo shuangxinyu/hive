@@ -19,8 +19,36 @@
 package org.apache.hadoop.hive.ql.plan;
 
 public class AbstractOperatorDesc implements OperatorDesc {
+
+  protected boolean vectorMode = false;
+  protected transient Statistics statistics;
+  protected transient OpTraits opTraits;
+
+  @Override
+  @Explain(skipHeader = true, displayName = "Statistics")
+  public Statistics getStatistics() {
+    return statistics;
+  }
+
+  @Override
+  public void setStatistics(Statistics statistics) {
+    this.statistics = statistics;
+  }
+
   @Override
   public Object clone() throws CloneNotSupportedException {
     throw new CloneNotSupportedException("clone not supported");
+  }
+
+  public void setVectorMode(boolean vm) {
+    this.vectorMode = vm;
+  }
+  
+  public OpTraits getOpTraits() {
+    return opTraits;
+  }
+  
+  public void setOpTraits(OpTraits opTraits) {
+    this.opTraits = opTraits;
   }
 }

@@ -12,7 +12,13 @@ import java.util.HashMap;
 import org.apache.thrift.TEnum;
 
 public enum TProtocolVersion implements org.apache.thrift.TEnum {
-  HIVE_CLI_SERVICE_PROTOCOL_V1(0);
+  HIVE_CLI_SERVICE_PROTOCOL_V1(0),
+  HIVE_CLI_SERVICE_PROTOCOL_V2(1),
+  HIVE_CLI_SERVICE_PROTOCOL_V3(2),
+  HIVE_CLI_SERVICE_PROTOCOL_V4(3),
+  HIVE_CLI_SERVICE_PROTOCOL_V5(4),
+  HIVE_CLI_SERVICE_PROTOCOL_V6(5),
+  HIVE_CLI_SERVICE_PROTOCOL_V7(6);
 
   private final int value;
 
@@ -35,6 +41,18 @@ public enum TProtocolVersion implements org.apache.thrift.TEnum {
     switch (value) {
       case 0:
         return HIVE_CLI_SERVICE_PROTOCOL_V1;
+      case 1:
+        return HIVE_CLI_SERVICE_PROTOCOL_V2;
+      case 2:
+        return HIVE_CLI_SERVICE_PROTOCOL_V3;
+      case 3:
+        return HIVE_CLI_SERVICE_PROTOCOL_V4;
+      case 4:
+        return HIVE_CLI_SERVICE_PROTOCOL_V5;
+      case 5:
+        return HIVE_CLI_SERVICE_PROTOCOL_V6;
+      case 6:
+        return HIVE_CLI_SERVICE_PROTOCOL_V7;
       default:
         return null;
     }

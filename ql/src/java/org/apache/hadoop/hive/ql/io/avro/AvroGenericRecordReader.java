@@ -18,6 +18,11 @@
 package org.apache.hadoop.hive.ql.io.avro;
 
 
+import java.io.IOException;
+import java.rmi.server.UID;
+import java.util.Map;
+import java.util.Properties;
+
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileReader;
 import org.apache.avro.generic.GenericData;
@@ -26,21 +31,19 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.mapred.FsInput;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.exec.Utilities;
-import org.apache.hadoop.hive.ql.plan.MapredWork;
+import org.apache.hadoop.hive.ql.plan.MapWork;
 import org.apache.hadoop.hive.ql.plan.PartitionDesc;
 import org.apache.hadoop.hive.serde2.avro.AvroGenericRecordWritable;
 import org.apache.hadoop.hive.serde2.avro.AvroSerdeException;
 import org.apache.hadoop.hive.serde2.avro.AvroSerdeUtils;
 import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.mapred.*;
-
-
-import java.io.IOException;
-import java.util.Map;
-import java.util.Properties;
+import org.apache.hadoop.mapred.FileSplit;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.JobConfigurable;
+import org.apache.hadoop.mapred.RecordReader;
+import org.apache.hadoop.mapred.Reporter;
 
 /**
  * RecordReader optimized against Avro GenericRecords that returns to record
@@ -54,6 +57,10 @@ public class AvroGenericRecordReader implements
   final private long start;
   final private long stop;
   protected JobConf jobConf;
+  /**
+   * A unique ID for each record reader.
+   */
+  final private UID recordReaderID;
 
   public AvroGenericRecordReader(JobConf job, FileSplit split, Reporter reporter) throws IOException {
     this.jobConf = job;
@@ -67,12 +74,15 @@ public class AvroGenericRecordReader implements
 
     GenericDatumReader<GenericRecord> gdr = new GenericDatumReader<GenericRecord>();
 
-    if(latest != null) gdr.setExpected(latest);
+    if(latest != null) {
+      gdr.setExpected(latest);
+    }
 
     this.reader = new DataFileReader<GenericRecord>(new FsInput(split.getPath(), job), gdr);
     this.reader.sync(split.getStart());
     this.start = reader.tell();
     this.stop = split.getStart() + split.getLength();
+    this.recordReaderID = new UID();
   }
 
   /**
@@ -83,14 +93,13 @@ public class AvroGenericRecordReader implements
    * @throws AvroSerdeException
    */
   private Schema getSchema(JobConf job, FileSplit split) throws AvroSerdeException, IOException {
-    FileSystem fs = split.getPath().getFileSystem(job);
     // Inside of a MR job, we can pull out the actual properties
     if(AvroSerdeUtils.insideMRJob(job)) {
-      MapredWork mapRedWork = Utilities.getMapRedWork(job);
+      MapWork mapWork = Utilities.getMapWork(job);
 
       // Iterate over the Path -> Partition descriptions to find the partition
       // that matches our input split.
-      for (Map.Entry<String,PartitionDesc> pathsAndParts: mapRedWork.getPathToPartitionInfo().entrySet()){
+      for (Map.Entry<String,PartitionDesc> pathsAndParts: mapWork.getPathToPartitionInfo().entrySet()){
         String partitionPath = pathsAndParts.getKey();
         if(pathIsInPartition(split.getPath(), partitionPath)) {
           if(LOG.isInfoEnabled()) {
@@ -101,11 +110,15 @@ public class AvroGenericRecordReader implements
           Properties props = pathsAndParts.getValue().getProperties();
           if(props.containsKey(AvroSerdeUtils.SCHEMA_LITERAL) || props.containsKey(AvroSerdeUtils.SCHEMA_URL)) {
             return AvroSerdeUtils.determineSchemaOrThrowException(props);
-          } else
+          }
+          else {
             return null; // If it's not in this property, it won't be in any others
+          }
         }
       }
-      if(LOG.isInfoEnabled()) LOG.info("Unable to match filesplit " + split + " with a partition.");
+      if(LOG.isInfoEnabled()) {
+        LOG.info("Unable to match filesplit " + split + " with a partition.");
+      }
     }
 
     // In "select * from table" situations (non-MR), we can add things to the job
@@ -139,6 +152,8 @@ public class AvroGenericRecordReader implements
 
     GenericData.Record r = (GenericData.Record)reader.next();
     record.setRecord(r);
+    record.setRecordReaderID(recordReaderID);
+    record.setFileSchema(reader.getSchema());
 
     return true;
   }

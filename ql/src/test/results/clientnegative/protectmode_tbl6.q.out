@@ -8,8 +8,10 @@ drop table tbl_protectmode_tbl6
 POSTHOOK: type: DROPTABLE
 PREHOOK: query: create table tbl_protectmode_tbl6 (col string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table tbl_protectmode_tbl6 (col string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@tbl_protectmode_tbl6
 PREHOOK: query: alter table tbl_protectmode_tbl6 enable no_drop cascade
 PREHOOK: type: ALTERTABLE_PROTECTMODE
@@ -23,5 +25,4 @@ PREHOOK: query: drop table tbl_protectmode_tbl6
 PREHOOK: type: DROPTABLE
 PREHOOK: Input: default@tbl_protectmode_tbl6
 PREHOOK: Output: default@tbl_protectmode_tbl6
-FAILED: Error in metadata: Table tbl_protectmode_tbl6 is protected from being dropped
-FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.DDLTask
+FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.DDLTask. Table tbl_protectmode_tbl6 is protected from being dropped

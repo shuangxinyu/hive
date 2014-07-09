@@ -18,6 +18,10 @@
 
 package org.apache.hadoop.hive.ql.udf.generic;
 
+import java.util.ArrayList;
+import java.util.Formatter;
+import java.util.Locale;
+
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentLengthException;
@@ -25,26 +29,14 @@ import org.apache.hadoop.hive.ql.exec.UDFArgumentTypeException;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorConverters;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
-import org.apache.hadoop.hive.serde2.objectinspector.ListObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorConverters.Converter;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.BooleanObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.ByteObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.ShortObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.IntObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.LongObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.FloatObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.DoubleObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.StringObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.TimestampObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.BinaryObjectInspector;
-import org.apache.hadoop.hive.serde2.lazy.ByteArrayRef;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.WritableHiveDecimalObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.WritableStringObjectInspector;
 import org.apache.hadoop.io.Text;
-
-import java.util.Formatter;
-import java.util.Locale;
-import java.util.ArrayList;
 
 /**
  * Generic UDF for printf function
@@ -60,7 +52,9 @@ import java.util.ArrayList;
     + "FROM src LIMIT 1;\n"
     + "  \"Hello World 100 days\"")
 public class GenericUDFPrintf extends GenericUDF {
-  private ObjectInspector[] argumentOIs;
+  private transient ObjectInspector[] argumentOIs;
+  protected transient Converter converterFormat;
+
   private final Text resultText = new Text();
 
   @Override
@@ -70,12 +64,25 @@ public class GenericUDFPrintf extends GenericUDF {
           "The function PRINTF(String format, Obj... args) needs at least one arguments.");
     }
 
-    if (arguments[0].getTypeName() != serdeConstants.STRING_TYPE_NAME
-      && arguments[0].getTypeName() != serdeConstants.VOID_TYPE_NAME) {
+    WritableStringObjectInspector resultOI = PrimitiveObjectInspectorFactory.writableStringObjectInspector;
+
+    if (arguments[0].getCategory() == ObjectInspector.Category.PRIMITIVE) {
+      PrimitiveObjectInspector poi = ((PrimitiveObjectInspector) arguments[0]);
+      if (poi.getPrimitiveCategory() == PrimitiveObjectInspector.PrimitiveCategory.STRING ||
+          poi.getPrimitiveCategory() == PrimitiveObjectInspector.PrimitiveCategory.CHAR ||
+          poi.getPrimitiveCategory() == PrimitiveObjectInspector.PrimitiveCategory.VARCHAR ||
+          poi.getPrimitiveCategory() == PrimitiveObjectInspector.PrimitiveCategory.VOID) {
+        converterFormat = ObjectInspectorConverters.getConverter(arguments[0], resultOI);
+      } else {
         throw new UDFArgumentTypeException(0, "Argument 1"
-        + " of function PRINTF must be \"" + serdeConstants.STRING_TYPE_NAME
-        + "\", but \"" + arguments[0].getTypeName() + "\" was found.");
+            + " of function PRINTF must be \"" + serdeConstants.STRING_TYPE_NAME
+            + "\", but \"" + arguments[0].getTypeName() + "\" was found.");
       }
+    } else {
+      throw new UDFArgumentTypeException(0, "Argument 1"
+          + " of function PRINTF must be \"" + serdeConstants.STRING_TYPE_NAME
+          + "\", but \"" + arguments[0].getTypeName() + "\" was found.");
+    }
 
     for (int i = 1; i < arguments.length; i++) {
       if (!arguments[i].getCategory().equals(Category.PRIMITIVE)){
@@ -86,58 +93,46 @@ public class GenericUDFPrintf extends GenericUDF {
     }
 
     argumentOIs = arguments;
-    return PrimitiveObjectInspectorFactory.writableStringObjectInspector;
+    return resultOI;
   }
 
   @Override
   public Object evaluate(DeferredObject[] arguments) throws HiveException {
+    // If the first argument is null, return null. (It's okay for other arguments to be null, in
+    // which case, "null" will be printed.)
+    if (arguments[0].get() == null) {
+      return null;
+    }
+
     StringBuilder sb = new StringBuilder();
     Formatter formatter = new Formatter(sb, Locale.US);
 
-    String pattern = ((StringObjectInspector) argumentOIs[0])
-        .getPrimitiveJavaObject(arguments[0].get());
+    Text pattern = (Text)converterFormat.convert(arguments[0].get());
 
-    ArrayList argumentList = new ArrayList();
+    ArrayList<Object> argumentList = new ArrayList<Object>();
     for (int i = 1; i < arguments.length; i++) {
       switch (((PrimitiveObjectInspector)argumentOIs[i]).getPrimitiveCategory()) {
         case BOOLEAN:
-          argumentList.add(((BooleanObjectInspector)argumentOIs[i]).get(arguments[i].get()));
-          break;
         case BYTE:
-          argumentList.add(((ByteObjectInspector)argumentOIs[i]).get(arguments[i].get()));
-          break;
         case SHORT:
-          argumentList.add(((ShortObjectInspector)argumentOIs[i]).get(arguments[i].get()));
-          break;
         case INT:
-          argumentList.add(((IntObjectInspector)argumentOIs[i]).get(arguments[i].get()));
-          break;
         case LONG:
-          argumentList.add(((LongObjectInspector)argumentOIs[i]).get(arguments[i].get()));
-          break;
         case FLOAT:
-          argumentList.add(((FloatObjectInspector)argumentOIs[i]).get(arguments[i].get()));
-          break;
         case DOUBLE:
-          argumentList.add(((DoubleObjectInspector)argumentOIs[i]).get(arguments[i].get()));
-          break;
+        case CHAR:
+        case VARCHAR:
         case STRING:
-          argumentList.add(((StringObjectInspector)argumentOIs[i])
-            .getPrimitiveJavaObject(arguments[i].get()));
-          break;
         case TIMESTAMP:
-          argumentList.add(((TimestampObjectInspector)argumentOIs[i])
+        case DECIMAL:
+          argumentList.add(((PrimitiveObjectInspector)argumentOIs[i])
             .getPrimitiveJavaObject(arguments[i].get()));
-          break;
-        case BINARY:
-          argumentList.add(arguments[i].get());
           break;
         default:
           argumentList.add(arguments[i].get());
           break;
       }
     }
-    formatter.format(pattern, argumentList.toArray());
+    formatter.format(pattern.toString(), argumentList.toArray());
 
     resultText.set(sb.toString());
     return resultText;

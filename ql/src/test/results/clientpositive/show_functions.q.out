@@ -29,12 +29,14 @@ asin
 assert_true
 atan
 avg
+base64
 between
 bin
 case
 ceil
 ceiling
 coalesce
+collect_list
 collect_set
 compute_stats
 concat
@@ -48,16 +50,20 @@ covar_pop
 covar_samp
 create_union
 cume_dist
+current_database
 date_add
 date_sub
 datediff
 day
 dayofmonth
+decode
+default.qtest_get_java_boolean
 degrees
 dense_rank
 div
 e
 elt
+encode
 ewah_bitmap
 ewah_bitmap_and
 ewah_bitmap_empty
@@ -103,6 +109,7 @@ ltrim
 map
 map_keys
 map_values
+matchpath
 max
 min
 minute
@@ -110,6 +117,10 @@ month
 named_struct
 negative
 ngrams
+noop
+noopstreaming
+noopwithmap
+noopwithmapstreaming
 not
 ntile
 nvl
@@ -121,6 +132,7 @@ percentile
 percentile_approx
 pi
 pmod
+posexplode
 positive
 pow
 power
@@ -166,8 +178,8 @@ to_utc_timestamp
 translate
 trim
 ucase
+unbase64
 unhex
-union_map
 unix_timestamp
 upper
 var_pop
@@ -175,6 +187,7 @@ var_samp
 variance
 weekofyear
 when
+windowingtablefunction
 xpath
 xpath_boolean
 xpath_double
@@ -195,6 +208,7 @@ case
 ceil
 ceiling
 coalesce
+collect_list
 collect_set
 compute_stats
 concat
@@ -208,6 +222,7 @@ covar_pop
 covar_samp
 create_union
 cume_dist
+current_database
 PREHOOK: query: SHOW FUNCTIONS '.*e$'
 PREHOOK: type: SHOWFUNCTIONS
 POSTHOOK: query: SHOW FUNCTIONS '.*e$'
@@ -215,7 +230,10 @@ POSTHOOK: type: SHOWFUNCTIONS
 assert_true
 case
 coalesce
+current_database
+decode
 e
+encode
 explode
 first_value
 from_unixtime
@@ -231,6 +249,7 @@ negative
 ntile
 parse_url_tuple
 percentile
+posexplode
 positive
 regexp_replace
 reverse

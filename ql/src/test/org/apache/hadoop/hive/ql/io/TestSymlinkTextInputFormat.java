@@ -20,10 +20,8 @@ package org.apache.hadoop.hive.ql.io;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.io.Serializable;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import junit.framework.TestCase;
@@ -35,20 +33,15 @@ import org.apache.hadoop.fs.ContentSummary;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.HiveMetaStore;
-import org.apache.hadoop.hive.ql.CommandNeedRetryException;
 import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.Driver;
 import org.apache.hadoop.hive.ql.QueryPlan;
-import org.apache.hadoop.hive.ql.exec.ExecDriver;
-import org.apache.hadoop.hive.ql.exec.MapRedTask;
-import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.Utilities;
-import org.apache.hadoop.hive.ql.metadata.Hive;
-import org.apache.hadoop.hive.ql.parse.ParseDriver;
-import org.apache.hadoop.hive.ql.parse.SemanticAnalyzer;
-import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.apache.hadoop.hive.ql.exec.mr.ExecDriver;
+import org.apache.hadoop.hive.ql.exec.mr.MapRedTask;
 import org.apache.hadoop.hive.ql.plan.MapredWork;
+import org.apache.hadoop.hive.ql.plan.PartitionDesc;
+import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
@@ -57,7 +50,6 @@ import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
-import org.apache.hadoop.mapred.TextInputFormat;
 import org.apache.hadoop.util.ReflectionUtils;
 
 /**
@@ -82,8 +74,17 @@ public class TestSymlinkTextInputFormat extends TestCase {
   protected void setUp() throws IOException {
     conf = new Configuration();
     job = new JobConf(conf);
+
+    TableDesc tblDesc = Utilities.defaultTd;
+    PartitionDesc partDesc = new PartitionDesc(tblDesc, null);
+    LinkedHashMap<String, PartitionDesc> pt = new LinkedHashMap<String, PartitionDesc>();
+    pt.put("/tmp/testfolder", partDesc);
+    MapredWork mrwork = new MapredWork();
+    mrwork.getMapWork().setPathToPartitionInfo(pt);
+    Utilities.setMapRedWork(job, mrwork,new Path("/tmp/" + System.getProperty("user.name"), "hive"));
+
     fileSystem = FileSystem.getLocal(conf);
-    testDir = new Path(System.getProperty("test.data.dir", System.getProperty(
+    testDir = new Path(System.getProperty("test.tmp.dir", System.getProperty(
         "user.dir", new File(".").getAbsolutePath()))
         + "/TestSymlinkTextInputFormat");
     reporter = Reporter.NULL;
@@ -108,31 +109,31 @@ public class TestSymlinkTextInputFormat extends TestCase {
     JobConf newJob = new JobConf(job);
     FileSystem fs = dataDir1.getFileSystem(newJob);
     int symbolLinkedFileSize = 0;
-    
+
     Path dir1_file1 = new Path(dataDir1, "combinefile1_1");
     writeTextFile(dir1_file1,
                   "dir1_file1_line1\n" +
                   "dir1_file1_line2\n");
-    
+
     symbolLinkedFileSize += fs.getFileStatus(dir1_file1).getLen();
-    
+
     Path dir2_file1 = new Path(dataDir2, "combinefile2_1");
     writeTextFile(dir2_file1,
                   "dir2_file1_line1\n" +
                   "dir2_file1_line2\n");
-    
+
     symbolLinkedFileSize += fs.getFileStatus(dir2_file1).getLen();
-    
+
     // A symlink file, contains first file from first dir and second file from
     // second dir.
     writeSymlinkFile(
         new Path(symlinkDir, "symlink_file"),
         new Path(dataDir1, "combinefile1_1"),
         new Path(dataDir2, "combinefile2_1"));
-    
-    
+
+
     HiveConf hiveConf = new HiveConf(TestSymlinkTextInputFormat.class);
-    
+
     HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_REWORK_MAPREDWORK, true);
     HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY, false);
     Driver drv = new Driver(hiveConf);
@@ -140,11 +141,11 @@ public class TestSymlinkTextInputFormat extends TestCase {
     String tblName = "text_symlink_text";
 
     String createSymlinkTableCmd = "create table " + tblName + " (key int) stored as " +
-    		" inputformat 'org.apache.hadoop.hive.ql.io.SymlinkTextInputFormat' " +
-    		" outputformat 'org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat'";
-    
+      " inputformat 'org.apache.hadoop.hive.ql.io.SymlinkTextInputFormat' " +
+      " outputformat 'org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat'";
+
     SessionState.start(hiveConf);
-    
+
     boolean tblCreated = false;
     try {
       int ecode = 0;
@@ -155,40 +156,40 @@ public class TestSymlinkTextInputFormat extends TestCase {
       }
 
       tblCreated = true;
-      String loadFileCommand = "LOAD DATA LOCAL INPATH '" + 
+      String loadFileCommand = "LOAD DATA LOCAL INPATH '" +
         new Path(symlinkDir, "symlink_file").toString() + "' INTO TABLE " + tblName;
-      
+
       ecode = drv.run(loadFileCommand).getResponseCode();
       if (ecode != 0) {
         throw new Exception("Load data command: " + loadFileCommand
             + " failed with exit code= " + ecode);
       }
-      
+
       String cmd = "select key from " + tblName;
       drv.compile(cmd);
 
       //create scratch dir
-      String emptyScratchDirStr;
-      Path emptyScratchDir;
       Context ctx = new Context(newJob);
-      emptyScratchDirStr = ctx.getMRTmpFileURI();
-      emptyScratchDir = new Path(emptyScratchDirStr);
+      Path emptyScratchDir = ctx.getMRTmpPath();
       FileSystem fileSys = emptyScratchDir.getFileSystem(newJob);
       fileSys.mkdirs(emptyScratchDir);
-      
+
       QueryPlan plan = drv.getPlan();
       MapRedTask selectTask = (MapRedTask)plan.getRootTasks().get(0);
-      
-      ExecDriver.addInputPaths(newJob, selectTask.getWork(), emptyScratchDir.toString(), ctx);
-      Utilities.setMapRedWork(newJob, selectTask.getWork(), ctx.getMRTmpFileURI());
-      
+
+      List<Path> inputPaths = Utilities.getInputPaths(newJob, selectTask.getWork().getMapWork(), emptyScratchDir, ctx, false);
+      Utilities.setInputPaths(newJob, inputPaths);
+
+      Utilities.setMapRedWork(newJob, selectTask.getWork(), ctx.getMRTmpPath());
+
       CombineHiveInputFormat combineInputFormat = ReflectionUtils.newInstance(
           CombineHiveInputFormat.class, newJob);
+
       InputSplit[] retSplits = combineInputFormat.getSplits(newJob, 1);
       assertEquals(1, retSplits.length);
     } catch (Exception e) {
       e.printStackTrace();
-      fail("Caught exception " + e); 
+      fail("Caught exception " + e);
     } finally {
       if (tblCreated) {
         drv.run("drop table text_symlink_text").getResponseCode();
@@ -202,48 +203,48 @@ public class TestSymlinkTextInputFormat extends TestCase {
    */
   public void testAccuracy1() throws IOException {
     // First data dir, contains 2 files.
-    
+
     FileSystem fs = dataDir1.getFileSystem(job);
     int symbolLinkedFileSize = 0;
-    
+
     Path dir1_file1 = new Path(dataDir1, "file1");
     writeTextFile(dir1_file1,
                   "dir1_file1_line1\n" +
                   "dir1_file1_line2\n");
-    
+
     symbolLinkedFileSize += fs.getFileStatus(dir1_file1).getLen();
-    
+
     Path dir1_file2 = new Path(dataDir1, "file2");
     writeTextFile(dir1_file2,
                   "dir1_file2_line1\n" +
                   "dir1_file2_line2\n");
-    
+
     // Second data dir, contains 2 files.
-    
+
     Path dir2_file1 = new Path(dataDir2, "file1");
     writeTextFile(dir2_file1,
                   "dir2_file1_line1\n" +
                   "dir2_file1_line2\n");
-    
+
     Path dir2_file2 = new Path(dataDir2, "file2");
     writeTextFile(dir2_file2,
                   "dir2_file2_line1\n" +
                   "dir2_file2_line2\n");
 
     symbolLinkedFileSize += fs.getFileStatus(dir2_file2).getLen();
-    
+
     // A symlink file, contains first file from first dir and second file from
     // second dir.
     writeSymlinkFile(
         new Path(symlinkDir, "symlink_file"),
         new Path(dataDir1, "file1"),
         new Path(dataDir2, "file2"));
-    
+
     SymlinkTextInputFormat inputFormat = new SymlinkTextInputFormat();
-    
+
     //test content summary
     ContentSummary cs = inputFormat.getContentSummary(symlinkDir, job);
-    
+
     assertEquals(symbolLinkedFileSize, cs.getLength());
     assertEquals(2, cs.getFileCount());
     assertEquals(0, cs.getDirectoryCount());
@@ -287,13 +288,13 @@ public class TestSymlinkTextInputFormat extends TestCase {
     FileInputFormat.setInputPaths(job, symlinkDir);
 
     SymlinkTextInputFormat inputFormat = new SymlinkTextInputFormat();
-    
+
     ContentSummary cs = inputFormat.getContentSummary(symlinkDir, job);
-    
+
     assertEquals(0, cs.getLength());
     assertEquals(0, cs.getFileCount());
     assertEquals(0, cs.getDirectoryCount());
-    
+
     InputSplit[] splits = inputFormat.getSplits(job, 2);
 
     log.info("Number of splits: " + splits.length);

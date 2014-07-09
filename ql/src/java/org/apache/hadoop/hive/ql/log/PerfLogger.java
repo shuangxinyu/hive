@@ -23,11 +23,8 @@ import java.util.Map;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.session.SessionState;
-import org.apache.hadoop.util.ReflectionUtils;
 
 /**
  * PerfLogger.
@@ -37,8 +34,17 @@ import org.apache.hadoop.util.ReflectionUtils;
 public class PerfLogger {
   public static final String ACQUIRE_READ_WRITE_LOCKS = "acquireReadWriteLocks";
   public static final String COMPILE = "compile";
+  public static final String PARSE = "parse";
+  public static final String ANALYZE = "semanticAnalyze";
   public static final String DO_AUTHORIZATION = "doAuthorization";
   public static final String DRIVER_EXECUTE = "Driver.execute";
+  public static final String INPUT_SUMMARY = "getInputSummary";
+  public static final String GET_SPLITS = "getSplits";
+  public static final String RUN_TASKS = "runTasks";
+  public static final String SERIALIZE_PLAN = "serializePlan";
+  public static final String DESERIALIZE_PLAN = "deserializePlan";
+  public static final String CLONE_PLAN = "clonePlan";
+  public static final String TASK = "task.";
   public static final String RELEASE_LOCKS = "releaseLocks";
   public static final String PRUNE_LISTING = "prune-listing";
   public static final String PARTITION_RETRIEVING = "partition-retrieving";
@@ -47,6 +53,17 @@ public class PerfLogger {
   public static final String FAILURE_HOOK = "FailureHook.";
   public static final String DRIVER_RUN = "Driver.run";
   public static final String TIME_TO_SUBMIT = "TimeToSubmit";
+  public static final String TEZ_SUBMIT_TO_RUNNING = "TezSubmitToRunningDag";
+  public static final String TEZ_BUILD_DAG = "TezBuildDag";
+  public static final String TEZ_SUBMIT_DAG = "TezSubmitDag";
+  public static final String TEZ_RUN_DAG = "TezRunDag";
+  public static final String TEZ_CREATE_VERTEX = "TezCreateVertex.";
+  public static final String TEZ_RUN_VERTEX = "TezRunVertex.";
+  public static final String TEZ_INITIALIZE_PROCESSOR = "TezInitializeProcessor";
+  public static final String TEZ_RUN_PROCESSOR = "TezRunProcessor";
+  public static final String TEZ_INIT_OPERATORS = "TezInitializeOperators";
+  public static final String LOAD_HASHTABLE = "LoadHashtable";
+  public static final String ORC_GET_SPLITS = "OrcGetSplits";
 
   protected static final ThreadLocal<PerfLogger> perfLogger = new ThreadLocal<PerfLogger>();
 
@@ -55,7 +72,7 @@ public class PerfLogger {
 
   static final private Log LOG = LogFactory.getLog(PerfLogger.class.getName());
 
-  protected PerfLogger() {
+  public PerfLogger() {
     // Use getPerfLogger to get an instance of PerfLogger
   }
 
@@ -68,26 +85,17 @@ public class PerfLogger {
    *
    * Use resetPerfLogger to require a new instance.  Useful at the beginning of execution.
    *
-   * @return  Tries to return an instance of the class whose name is configured in
-   *          hive.exec.perf.logger, but if it can't it just returns an instance of
-   *          the base PerfLogger class
+   * @return Session perflogger if there's a sessionstate, otherwise return the thread local instance
    */
   public static PerfLogger getPerfLogger(boolean resetPerfLogger) {
-    if (perfLogger.get() == null || resetPerfLogger) {
-      if (SessionState.get() == null) {
+    if (SessionState.get() == null) {
+      if (perfLogger.get() == null || resetPerfLogger) {
         perfLogger.set(new PerfLogger());
-      } else {
-        HiveConf conf = SessionState.get().getConf();
-        try {
-          perfLogger.set((PerfLogger) ReflectionUtils.newInstance(conf.getClassByName(
-              conf.getVar(ConfVars.HIVE_PERF_LOGGER)), conf));
-        } catch (ClassNotFoundException e) {
-          LOG.error("Performance Logger Class not found:" + e.getMessage());
-          perfLogger.set(new PerfLogger());
-        }
       }
+      return perfLogger.get();
+    } else {
+      return SessionState.get().getPerfLogger(resetPerfLogger);
     }
-    return perfLogger.get();
   }
 
   /**
@@ -95,9 +103,9 @@ public class PerfLogger {
    * @param _log the logging object to be used.
    * @param method method or ID that identifies this perf log element.
    */
-  public void PerfLogBegin(Log _log, String method) {
+  public void PerfLogBegin(String callerName, String method) {
     long startTime = System.currentTimeMillis();
-    _log.info("<PERFLOG method=" + method + ">");
+    LOG.info("<PERFLOG method=" + method + " from=" + callerName + ">");
     startTimes.put(method, new Long(startTime));
   }
 
@@ -107,7 +115,7 @@ public class PerfLogger {
    * @param method
    * @return long duration  the difference between now and startTime, or -1 if startTime is null
    */
-  public long PerfLogEnd(Log _log, String method) {
+  public long PerfLogEnd(String callerName, String method) {
     Long startTime = startTimes.get(method);
     long endTime = System.currentTimeMillis();
     long duration = -1;
@@ -123,8 +131,8 @@ public class PerfLogger {
       duration = endTime - startTime.longValue();
       sb.append(" duration=").append(duration);
     }
-    sb.append(">");
-    _log.info(sb);
+    sb.append(" from=").append(callerName).append(">");
+    LOG.info(sb);
 
     return duration;
   }

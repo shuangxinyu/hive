@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.hive.hbase;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -32,6 +34,7 @@ import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.SerDeException;
+import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.io.ByteWritable;
 import org.apache.hadoop.hive.serde2.io.DoubleWritable;
 import org.apache.hadoop.hive.serde2.io.ShortWritable;
@@ -43,6 +46,7 @@ import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.thrift.TException;
 
 /**
  * Tests the HBaseSerDe class.
@@ -111,28 +115,28 @@ public class TestHBaseSerDe extends TestCase {
     HBaseSerDe serDe = new HBaseSerDe();
     Configuration conf = new Configuration();
     Properties tbl = createPropertiesI_I();
-    serDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
 
     deserializeAndSerialize(serDe, r, p, expectedFieldsData);
 
     serDe = new HBaseSerDe();
     conf = new Configuration();
     tbl = createPropertiesI_II();
-    serDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
 
     deserializeAndSerialize(serDe, r, p, expectedFieldsData);
 
     serDe = new HBaseSerDe();
     conf = new Configuration();
     tbl = createPropertiesI_III();
-    serDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
 
     deserializeAndSerialize(serDe, r, p, expectedFieldsData);
 
     serDe = new HBaseSerDe();
     conf = new Configuration();
     tbl = createPropertiesI_IV();
-    serDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
 
     deserializeAndSerialize(serDe, r, p, expectedFieldsData);
   }
@@ -145,7 +149,7 @@ public class TestHBaseSerDe extends TestCase {
     long putTimestamp = 1;
     tbl.setProperty(HBaseSerDe.HBASE_PUT_TIMESTAMP,
             Long.toString(putTimestamp));
-    serDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
 
 
     byte [] cfa = "cola".getBytes();
@@ -215,7 +219,7 @@ public class TestHBaseSerDe extends TestCase {
     assertEquals(9, fieldRefs.size());
 
     // Deserialize
-    Object row = serDe.deserialize(r);
+    Object row = serDe.deserialize(new ResultWritable(r));
     for (int i = 0; i < fieldRefs.size(); i++) {
       Object fieldData = oi.getStructFieldData(row, fieldRefs.get(i));
       if (fieldData != null) {
@@ -224,9 +228,9 @@ public class TestHBaseSerDe extends TestCase {
       assertEquals("Field " + i, expectedFieldsData[i], fieldData);
     }
     // Serialize
-    assertEquals(Put.class, serDe.getSerializedClass());
-    Put serializedPut = (Put) serDe.serialize(row, oi);
-    assertEquals("Serialized data", p.toString(), serializedPut.toString());
+    assertEquals(PutWritable.class, serDe.getSerializedClass());
+    PutWritable serializedPut = (PutWritable) serDe.serialize(row, oi);
+    assertEquals("Serialized data", p.toString(),String.valueOf(serializedPut.getPut()));
   }
 
   // No specifications default to UTF8 String storage for backwards compatibility
@@ -352,21 +356,21 @@ public class TestHBaseSerDe extends TestCase {
     HBaseSerDe serDe = new HBaseSerDe();
     Configuration conf = new Configuration();
     Properties tbl = createPropertiesII_I();
-    serDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
 
     deserializeAndSerialize(serDe, r, p, expectedFieldsData);
 
     serDe = new HBaseSerDe();
     conf = new Configuration();
     tbl = createPropertiesII_II();
-    serDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
 
     deserializeAndSerialize(serDe, r, p, expectedFieldsData);
 
     serDe = new HBaseSerDe();
     conf = new Configuration();
     tbl = createPropertiesII_III();
-    serDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
 
     deserializeAndSerialize(serDe, r, p, expectedFieldsData);
   }
@@ -482,7 +486,7 @@ public class TestHBaseSerDe extends TestCase {
     HBaseSerDe hbaseSerDe = new HBaseSerDe();
     Configuration conf = new Configuration();
     Properties tbl = createPropertiesForHiveMapHBaseColumnFamily();
-    hbaseSerDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(hbaseSerDe, conf, tbl, null);
 
     deserializeAndSerializeHiveMapHBaseColumnFamily(hbaseSerDe, r, p, expectedData, rowKeys,
         columnFamilies, columnQualifiersAndValues);
@@ -490,7 +494,7 @@ public class TestHBaseSerDe extends TestCase {
     hbaseSerDe = new HBaseSerDe();
     conf = new Configuration();
     tbl = createPropertiesForHiveMapHBaseColumnFamilyII();
-    hbaseSerDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(hbaseSerDe, conf, tbl, null);
 
     deserializeAndSerializeHiveMapHBaseColumnFamily(hbaseSerDe, r, p, expectedData, rowKeys,
         columnFamilies, columnQualifiersAndValues);
@@ -511,8 +515,8 @@ public class TestHBaseSerDe extends TestCase {
 
     // Deserialize
     for (int i = 0; i < r.length; i++) {
-      Object row = hbaseSerDe.deserialize(r[i]);
-      Put serializedPut = (Put) hbaseSerDe.serialize(row, soi);
+      Object row = hbaseSerDe.deserialize(new ResultWritable(r[i]));
+      Put serializedPut = ((PutWritable) hbaseSerDe.serialize(row, soi)).getPut();
       byte [] rowKey = serializedPut.getRow();
 
       for (int k = 0; k < rowKey.length; k++) {
@@ -611,7 +615,7 @@ public class TestHBaseSerDe extends TestCase {
     HBaseSerDe hbaseSerDe = new HBaseSerDe();
     Configuration conf = new Configuration();
     Properties tbl = createPropertiesForHiveMapHBaseColumnFamilyII_I();
-    hbaseSerDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(hbaseSerDe, conf, tbl, null);
 
     deserializeAndSerializeHiveMapHBaseColumnFamilyII(hbaseSerDe, r, p, expectedData,
         columnFamilies, columnQualifiersAndValues);
@@ -619,7 +623,7 @@ public class TestHBaseSerDe extends TestCase {
     hbaseSerDe = new HBaseSerDe();
     conf = new Configuration();
     tbl = createPropertiesForHiveMapHBaseColumnFamilyII_II();
-    hbaseSerDe.initialize(conf, tbl);
+    SerDeUtils.initializeSerDe(hbaseSerDe, conf, tbl, null);
 
     deserializeAndSerializeHiveMapHBaseColumnFamilyII(hbaseSerDe, r, p, expectedData,
         columnFamilies, columnQualifiersAndValues);
@@ -667,7 +671,7 @@ public class TestHBaseSerDe extends TestCase {
     assertEquals(9, fieldRefs.size());
 
     // Deserialize
-    Object row = hbaseSerDe.deserialize(r);
+    Object row = hbaseSerDe.deserialize(new ResultWritable(r));
 
     for (int j = 0; j < fieldRefs.size(); j++) {
       Object fieldData = soi.getStructFieldData(row, fieldRefs.get(j));
@@ -685,7 +689,294 @@ public class TestHBaseSerDe extends TestCase {
     }
 
     // Serialize
-    Put serializedPut = (Put) hbaseSerDe.serialize(row, soi);
+    Put serializedPut = ((PutWritable) hbaseSerDe.serialize(row, soi)).getPut();
     assertEquals("Serialized data: ", p.toString(), serializedPut.toString());
+  }
+
+  public void testHBaseSerDeWithColumnPrefixes()
+      throws Exception {
+    byte[] cfa = "cola".getBytes();
+
+    byte[] qualA = "prefixA_col1".getBytes();
+    byte[] qualB = "prefixB_col2".getBytes();
+    byte[] qualC = "prefixB_col3".getBytes();
+    byte[] qualD = "unwanted_col".getBytes();
+
+    List<Object> qualifiers = new ArrayList<Object>();
+    qualifiers.add(new Text("prefixA_col1"));
+    qualifiers.add(new Text("prefixB_col2"));
+    qualifiers.add(new Text("prefixB_col3"));
+    qualifiers.add(new Text("unwanted_col"));
+
+    List<Object> expectedQualifiers = new ArrayList<Object>();
+    expectedQualifiers.add(new Text("prefixA_col1"));
+    expectedQualifiers.add(new Text("prefixB_col2"));
+    expectedQualifiers.add(new Text("prefixB_col3"));
+
+    byte[] rowKey = Bytes.toBytes("test-row1");
+
+    // Data
+    List<KeyValue> kvs = new ArrayList<KeyValue>();
+
+    byte[] dataA = "This is first test data".getBytes();
+    byte[] dataB = "This is second test data".getBytes();
+    byte[] dataC = "This is third test data".getBytes();
+    byte[] dataD = "Unwanted data".getBytes();
+
+    kvs.add(new KeyValue(rowKey, cfa, qualA, dataA));
+    kvs.add(new KeyValue(rowKey, cfa, qualB, dataB));
+    kvs.add(new KeyValue(rowKey, cfa, qualC, dataC));
+    kvs.add(new KeyValue(rowKey, cfa, qualD, dataD));
+
+    Result r = new Result(kvs);
+
+    Put p = new Put(rowKey);
+
+    p.add(new KeyValue(rowKey, cfa, qualA, dataA));
+    p.add(new KeyValue(rowKey, cfa, qualB, dataB));
+    p.add(new KeyValue(rowKey, cfa, qualC, dataC));
+
+    Object[] expectedFieldsData = {
+        new Text("test-row1"),
+        new String("This is first test data"),
+        new String("This is second test data"),
+        new String("This is third test data")};
+
+    int[] expectedMapSize = new int[] {1, 2};
+
+    // Create, initialize, and test the SerDe
+    HBaseSerDe serDe = new HBaseSerDe();
+    Configuration conf = new Configuration();
+    Properties tbl = createPropertiesForColumnPrefixes();
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
+
+    Object notPresentKey = new Text("unwanted_col");
+
+    deserializeAndSerializeHivePrefixColumnFamily(serDe, r, p, expectedFieldsData, expectedMapSize,
+        expectedQualifiers,
+        notPresentKey);
+  }
+
+  private Properties createPropertiesForColumnPrefixes() {
+    Properties tbl = new Properties();
+    tbl.setProperty(serdeConstants.LIST_COLUMNS,
+        "key,astring,along");
+    tbl.setProperty(serdeConstants.LIST_COLUMN_TYPES,
+        "string:map<string,string>:map<string,string>");
+    tbl.setProperty(HBaseSerDe.HBASE_COLUMNS_MAPPING,
+        ":key,cola:prefixA_.*,cola:prefixB_.*");
+
+    return tbl;
+  }
+
+  private void deserializeAndSerializeHivePrefixColumnFamily(HBaseSerDe serDe, Result r, Put p,
+      Object[] expectedFieldsData, int[] expectedMapSize, List<Object> expectedQualifiers,
+      Object notPresentKey)
+      throws SerDeException, IOException {
+    StructObjectInspector soi = (StructObjectInspector) serDe.getObjectInspector();
+
+    List<? extends StructField> fieldRefs = soi.getAllStructFieldRefs();
+
+    Object row = serDe.deserialize(new ResultWritable(r));
+
+    int j = 0;
+
+    for (int i = 0; i < fieldRefs.size(); i++) {
+      Object fieldData = soi.getStructFieldData(row, fieldRefs.get(i));
+      assertNotNull(fieldData);
+
+      if (fieldData instanceof LazyPrimitive<?, ?>) {
+        assertEquals(expectedFieldsData[i], ((LazyPrimitive<?, ?>) fieldData).getWritableObject());
+      } else if (fieldData instanceof LazyHBaseCellMap) {
+        assertEquals(expectedFieldsData[i], ((LazyHBaseCellMap) fieldData)
+            .getMapValueElement(expectedQualifiers.get(j)).toString().trim());
+
+        assertEquals(expectedMapSize[j], ((LazyHBaseCellMap) fieldData).getMapSize());
+        // Make sure that the unwanted key is not present in the map
+        assertNull(((LazyHBaseCellMap) fieldData).getMapValueElement(notPresentKey));
+
+        j++;
+
+      } else {
+        fail("Error: field data not an instance of LazyPrimitive<?, ?> or LazyHBaseCellMap");
+      }
+    }
+
+    SerDeUtils.getJSONString(row, soi);
+
+    // Now serialize
+    Put put = ((PutWritable) serDe.serialize(row, soi)).getPut();
+
+    if (p != null) {
+      assertEquals("Serialized put:", p.toString(), put.toString());
+    }
+  }
+
+  public void testHBaseSerDeCompositeKeyWithSeparator() throws SerDeException, TException,
+      IOException {
+    byte[] cfa = "cola".getBytes();
+
+    byte[] qualStruct = "struct".getBytes();
+
+    TestStruct testStruct = new TestStruct("A", "B", "C", true, (byte) 45);
+
+    byte[] rowKey = testStruct.getBytes();
+
+    // Data
+    List<KeyValue> kvs = new ArrayList<KeyValue>();
+
+    byte[] testData = "This is a test data".getBytes();
+
+    kvs.add(new KeyValue(rowKey, cfa, qualStruct, testData));
+
+    Result r = new Result(kvs);
+
+    Put p = new Put(rowKey);
+
+    // Post serialization, separators are automatically inserted between different fields in the
+    // struct. Currently there is not way to disable that. So the work around here is to pad the
+    // data with the separator bytes before creating a "Put" object
+    p.add(new KeyValue(rowKey, cfa, qualStruct, testData));
+
+    // Create, initialize, and test the SerDe
+    HBaseSerDe serDe = new HBaseSerDe();
+    Configuration conf = new Configuration();
+    Properties tbl = createPropertiesForCompositeKeyWithSeparator();
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
+
+    deserializeAndSerializeHBaseCompositeKey(serDe, r, p);
+  }
+
+  private Properties createPropertiesForCompositeKeyWithSeparator() {
+    Properties tbl = new Properties();
+    tbl.setProperty(serdeConstants.LIST_COLUMNS,
+        "key,astring");
+    tbl.setProperty(serdeConstants.LIST_COLUMN_TYPES,
+        "struct<col1:string,col2:string,col3:string>,string");
+    tbl.setProperty(HBaseSerDe.HBASE_COLUMNS_MAPPING,
+        ":key,cola:struct");
+    tbl.setProperty(serdeConstants.COLLECTION_DELIM, "-");
+
+    return tbl;
+  }
+
+  public void testHBaseSerDeCompositeKeyWithoutSeparator() throws SerDeException, TException,
+      IOException {
+    byte[] cfa = "cola".getBytes();
+
+    byte[] qualStruct = "struct".getBytes();
+
+    TestStruct testStruct = new TestStruct("A", "B", "C", false, (byte) 0);
+
+    byte[] rowKey = testStruct.getBytes();
+
+    // Data
+    List<KeyValue> kvs = new ArrayList<KeyValue>();
+
+    byte[] testData = "This is a test data".getBytes();
+
+    kvs.add(new KeyValue(rowKey, cfa, qualStruct, testData));
+
+    Result r = new Result(kvs);
+
+    byte[] putRowKey = testStruct.getBytesWithDelimiters();
+
+    Put p = new Put(putRowKey);
+
+    // Post serialization, separators are automatically inserted between different fields in the
+    // struct. Currently there is not way to disable that. So the work around here is to pad the
+    // data with the separator bytes before creating a "Put" object
+    p.add(new KeyValue(putRowKey, cfa, qualStruct, testData));
+
+    // Create, initialize, and test the SerDe
+    HBaseSerDe serDe = new HBaseSerDe();
+    Configuration conf = new Configuration();
+    Properties tbl = createPropertiesForCompositeKeyWithoutSeparator();
+    SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
+
+    deserializeAndSerializeHBaseCompositeKey(serDe, r, p);
+  }
+
+  private Properties createPropertiesForCompositeKeyWithoutSeparator() {
+    Properties tbl = new Properties();
+    tbl.setProperty(serdeConstants.LIST_COLUMNS,
+        "key,astring");
+    tbl.setProperty(serdeConstants.LIST_COLUMN_TYPES,
+        "struct<col1:string,col2:string,col3:string>,string");
+    tbl.setProperty(HBaseSerDe.HBASE_COLUMNS_MAPPING,
+        ":key,cola:struct");
+    tbl.setProperty(HBaseSerDe.HBASE_COMPOSITE_KEY_CLASS,
+        "org.apache.hadoop.hive.hbase.HBaseTestCompositeKey");
+
+    return tbl;
+  }
+
+  private void deserializeAndSerializeHBaseCompositeKey(HBaseSerDe serDe, Result r, Put p)
+      throws SerDeException, IOException {
+    StructObjectInspector soi = (StructObjectInspector) serDe.getObjectInspector();
+
+    List<? extends StructField> fieldRefs = soi.getAllStructFieldRefs();
+
+    Object row = serDe.deserialize(new ResultWritable(r));
+
+    for (int j = 0; j < fieldRefs.size(); j++) {
+      Object fieldData = soi.getStructFieldData(row, fieldRefs.get(j));
+      assertNotNull(fieldData);
+    }
+
+    assertEquals(
+        "{\"key\":{\"col1\":\"A\",\"col2\":\"B\",\"col3\":\"C\"},\"astring\":\"This is a test data\"}",
+        SerDeUtils.getJSONString(row, soi));
+
+    // Now serialize
+    Put put = ((PutWritable) serDe.serialize(row, soi)).getPut();
+
+    assertEquals("Serialized put:", p.toString(), put.toString());
+  }
+
+  class TestStruct {
+    String f1;
+    String f2;
+    String f3;
+    boolean hasSeparator;
+    byte separator;
+
+    TestStruct(String f1, String f2, String f3, boolean hasSeparator, byte separator) {
+      this.f1 = f1;
+      this.f2 = f2;
+      this.f3 = f3;
+      this.hasSeparator = hasSeparator;
+      this.separator = separator;
+    }
+
+    public byte[] getBytes() throws IOException {
+      ByteArrayOutputStream bos = new ByteArrayOutputStream();
+
+      bos.write(f1.getBytes());
+      if (hasSeparator) {
+        bos.write(separator); // Add field separator
+      }
+      bos.write(f2.getBytes());
+      if (hasSeparator) {
+        bos.write(separator);
+      }
+      bos.write(f3.getBytes());
+
+      return bos.toByteArray();
+    }
+
+    public byte[] getBytesWithDelimiters() throws IOException {
+      // Add Ctrl-B delimiter between the fields. This is necessary because for structs in case no
+      // delimiter is provided, hive automatically adds Ctrl-B as a default delimiter between fields
+      ByteArrayOutputStream bos = new ByteArrayOutputStream();
+
+      bos.write(f1.getBytes());
+      bos.write("\002".getBytes("UTF8"));
+      bos.write(f2.getBytes());
+      bos.write("\002".getBytes("UTF8"));
+      bos.write(f3.getBytes());
+
+      return bos.toByteArray();
+    }
   }
 }

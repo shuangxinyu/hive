@@ -80,15 +80,20 @@ public class UnionOperator extends Operator<UnionDesc> implements Serializable {
     for (int p = 0; p < parents; p++) {
       assert (parentFields[p].size() == columns);
       for (int c = 0; c < columns; c++) {
-        columnTypeResolvers[c].update(parentFields[p].get(c)
-            .getFieldObjectInspector());
+        if (!columnTypeResolvers[c].update(parentFields[p].get(c)
+            .getFieldObjectInspector())) {
+          // checked in SemanticAnalyzer. Should not happen
+          throw new HiveException("Incompatible types for union operator");
+        }
       }
     }
 
     ArrayList<ObjectInspector> outputFieldOIs = new ArrayList<ObjectInspector>(
         columns);
     for (int c = 0; c < columns; c++) {
-      outputFieldOIs.add(columnTypeResolvers[c].get());
+      // can be null for void type
+      ObjectInspector oi = columnTypeResolvers[c].get();
+      outputFieldOIs.add(oi == null ? parentFields[0].get(c).getFieldObjectInspector() : oi);
     }
 
     // create output row ObjectInspector
@@ -161,6 +166,14 @@ public class UnionOperator extends Operator<UnionDesc> implements Serializable {
 
   @Override
   public boolean opAllowedAfterMapJoin() {
+    return false;
+  }
+
+  @Override
+  public boolean opAllowedBeforeSortMergeJoin() {
+    // If a union occurs before the sort-merge join, it is not useful to convert the the
+    // sort-merge join to a mapjoin. The number of inputs for the union is more than 1 so
+    // it would be difficult to figure out the big table for the mapjoin.
     return false;
   }
 }

@@ -111,6 +111,7 @@ public class JDBCStatsPublisher implements StatsPublisher {
       } catch (SQLException e) {
         // for SQLTransientException (maxRetries already achieved at Utilities retry functions
         // or SQLNonTransientException, declare a real failure
+        LOG.error("Error during JDBC connection to " + connectionString + ". ", e);
         return false;
       }
     }
@@ -238,7 +239,9 @@ public class JDBCStatsPublisher implements StatsPublisher {
         try {
           // The following closes the derby connection. It throws an exception that has to be caught
           // and ignored.
-          DriverManager.getConnection(connectionString + ";shutdown=true");
+          synchronized(DriverManager.class) {
+            DriverManager.getConnection(connectionString + ";shutdown=true");
+          }
         } catch (Exception e) {
           // Do nothing because we know that an exception is thrown anyway.
         }
@@ -256,30 +259,48 @@ public class JDBCStatsPublisher implements StatsPublisher {
    */
   @Override
   public boolean init(Configuration hconf) {
+    Statement stmt = null;
+    ResultSet rs = null;
     try {
       this.hiveconf = hconf;
       connectionString = HiveConf.getVar(hconf, HiveConf.ConfVars.HIVESTATSDBCONNECTIONSTRING);
       String driver = HiveConf.getVar(hconf, HiveConf.ConfVars.HIVESTATSJDBCDRIVER);
       Class.forName(driver).newInstance();
-      DriverManager.setLoginTimeout(timeout);
-      conn = DriverManager.getConnection(connectionString);
+      synchronized(DriverManager.class) {
+        DriverManager.setLoginTimeout(timeout);
+        conn = DriverManager.getConnection(connectionString);
 
-      Statement stmt = conn.createStatement();
-      stmt.setQueryTimeout(timeout);
+        stmt = conn.createStatement();
+        stmt.setQueryTimeout(timeout);
 
-      // Check if the table exists
-      DatabaseMetaData dbm = conn.getMetaData();
-      ResultSet rs = dbm.getTables(null, null, JDBCStatsUtils.getStatTableName(), null);
-      boolean tblExists = rs.next();
-      if (!tblExists) { // Table does not exist, create it
-        String createTable = JDBCStatsUtils.getCreate("");
-        stmt.executeUpdate(createTable);
-        stmt.close();
+        // Check if the table exists
+        DatabaseMetaData dbm = conn.getMetaData();
+        rs = dbm.getTables(null, null, JDBCStatsUtils.getStatTableName(), null);
+        boolean tblExists = rs.next();
+        if (!tblExists) { // Table does not exist, create it
+          String createTable = JDBCStatsUtils.getCreate("");
+          stmt.executeUpdate(createTable);          
+        }      
       }
-      closeConnection();
     } catch (Exception e) {
       LOG.error("Error during JDBC initialization. ", e);
       return false;
+    } finally {
+      if(rs != null) {
+        try {
+          rs.close();
+        } catch (SQLException e) {
+          // do nothing
+        }
+      }
+      if(stmt != null) {
+        try {
+          stmt.close();
+        } catch (SQLException e) {
+          // do nothing
+        }
+      }
+      closeConnection();
     }
     return true;
   }

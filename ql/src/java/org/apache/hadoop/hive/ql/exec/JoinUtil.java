@@ -23,18 +23,16 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hive.ql.exec.persistence.AbstractMapJoinKey;
-import org.apache.hadoop.hive.ql.exec.persistence.MapJoinDoubleKeys;
-import org.apache.hadoop.hive.ql.exec.persistence.MapJoinObjectKey;
-import org.apache.hadoop.hive.ql.exec.persistence.MapJoinSingleKey;
 import org.apache.hadoop.hive.ql.exec.persistence.RowContainer;
 import org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.JoinDesc;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
+import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.SerDe;
 import org.apache.hadoop.hive.serde2.SerDeException;
+import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.io.ShortWritable;
 import org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
@@ -55,11 +53,13 @@ public class JoinUtil {
       ObjectInspector[] inputObjInspector,
       int posBigTableAlias, int tagLen) throws HiveException {
     List<ObjectInspector>[] result = new List[tagLen];
-    for (byte alias = 0; alias < exprEntries.length; alias++) {
-      //get big table
-      if (alias == (byte) posBigTableAlias){
-        //skip the big tables
-          continue;
+
+    int iterate = Math.min(exprEntries.length, inputObjInspector.length);
+    for (byte alias = 0; alias < iterate; alias++) {
+      if (alias == (byte) posBigTableAlias ||
+          exprEntries[alias] == null || inputObjInspector[alias] == null) {
+        // skip the driver and directly loadable tables
+        continue;
       }
 
       List<ExprNodeEvaluator> exprList = exprEntries[alias];
@@ -79,7 +79,7 @@ public class JoinUtil {
     List<ObjectInspector>[] result = new List[tagLen];
     for (byte alias = 0; alias < aliasToObjectInspectors.length; alias++) {
       //get big table
-      if(alias == (byte) posBigTableAlias ){
+      if(alias == (byte) posBigTableAlias || aliasToObjectInspectors[alias] == null){
         //skip the big tables
           continue;
       }
@@ -98,16 +98,19 @@ public class JoinUtil {
   }
 
   public static int populateJoinKeyValue(List<ExprNodeEvaluator>[] outMap,
-      Map<Byte, List<ExprNodeDesc>> inputMap, int posBigTableAlias) {
+      Map<Byte, List<ExprNodeDesc>> inputMap, int posBigTableAlias) throws HiveException {
     return populateJoinKeyValue(outMap, inputMap, null, posBigTableAlias);
   }
 
   public static int populateJoinKeyValue(List<ExprNodeEvaluator>[] outMap,
       Map<Byte, List<ExprNodeDesc>> inputMap,
       Byte[] order,
-      int posBigTableAlias) {
+      int posBigTableAlias) throws HiveException {
     int total = 0;
     for (Entry<Byte, List<ExprNodeDesc>> e : inputMap.entrySet()) {
+      if (e.getValue() == null) {
+        continue;
+      }
       Byte key = order == null ? e.getKey() : order[e.getKey()];
       List<ExprNodeEvaluator> valueFields = new ArrayList<ExprNodeEvaluator>();
       for (ExprNodeDesc expr : e.getValue()) {
@@ -146,50 +149,6 @@ public class JoinUtil {
   }
 
   /**
-   * Return the key as a standard object. StandardObject can be inspected by a
-   * standard ObjectInspector.
-   */
-  public static AbstractMapJoinKey computeMapJoinKeys(Object row,
-      List<ExprNodeEvaluator> keyFields, List<ObjectInspector> keyFieldsOI)
-      throws HiveException {
-
-    int size = keyFields.size();
-    if(size == 1){
-      Object obj = (ObjectInspectorUtils.copyToStandardObject(keyFields.get(0)
-          .evaluate(row), keyFieldsOI.get(0),
-          ObjectInspectorCopyOption.WRITABLE));
-      MapJoinSingleKey key = new MapJoinSingleKey(obj);
-      return key;
-    }else if(size == 2){
-      Object obj1 = (ObjectInspectorUtils.copyToStandardObject(keyFields.get(0)
-          .evaluate(row), keyFieldsOI.get(0),
-          ObjectInspectorCopyOption.WRITABLE));
-
-      Object obj2 = (ObjectInspectorUtils.copyToStandardObject(keyFields.get(1)
-          .evaluate(row), keyFieldsOI.get(1),
-          ObjectInspectorCopyOption.WRITABLE));
-
-      MapJoinDoubleKeys key = new MapJoinDoubleKeys(obj1,obj2);
-      return key;
-    }else{
-      // Compute the keys
-      Object[] nr = new Object[keyFields.size()];
-      for (int i = 0; i < keyFields.size(); i++) {
-
-        nr[i] = (ObjectInspectorUtils.copyToStandardObject(keyFields.get(i)
-            .evaluate(row), keyFieldsOI.get(i),
-            ObjectInspectorCopyOption.WRITABLE));
-      }
-      MapJoinObjectKey key = new MapJoinObjectKey(nr);
-      return key;
-      }
-  }
-
-
-
-
-
-  /**
    * Return the value as a standard object. StandardObject can be inspected by a
    * standard ObjectInspector.
    */
@@ -221,14 +180,15 @@ public class JoinUtil {
    * Return the value as a standard object. StandardObject can be inspected by a
    * standard ObjectInspector.
    * If it would be tagged by filter, reserve one more slot for that.
+   * outValues can be passed in to avoid allocation
    */
-  public static ArrayList<Object> computeValues(Object row,
+  public static List<Object> computeValues(Object row,
       List<ExprNodeEvaluator> valueFields, List<ObjectInspector> valueFieldsOI, boolean hasFilter)
       throws HiveException {
 
     // Compute the values
     int reserve = hasFilter ? valueFields.size() + 1 : valueFields.size();
-    ArrayList<Object> nr = new ArrayList<Object>(reserve);
+    List<Object> nr = new ArrayList<Object>(reserve);   
     for (int i = 0; i < valueFields.size(); i++) {
       nr.add(ObjectInspectorUtils.copyToStandardObject(valueFields.get(i)
           .evaluate(row), valueFieldsOI.get(i),
@@ -302,7 +262,7 @@ public class JoinUtil {
     SerDe sd = (SerDe) ReflectionUtils.newInstance(desc.getDeserializerClass(),
         null);
     try {
-      sd.initialize(null, desc.getProperties());
+      SerDeUtils.initializeSerDe(sd, null, desc.getProperties(), null);
     } catch (SerDeException e) {
       e.printStackTrace();
       return null;
@@ -339,7 +299,7 @@ public class JoinUtil {
       // remove the last ','
       colNames.setLength(colNames.length() - 1);
       colTypes.setLength(colTypes.length() - 1);
-      TableDesc tblDesc = new TableDesc(LazyBinarySerDe.class,
+      TableDesc tblDesc = new TableDesc(
           SequenceFileInputFormat.class, HiveSequenceFileOutputFormat.class,
           Utilities.makeProperties(
           org.apache.hadoop.hive.serde.serdeConstants.SERIALIZATION_FORMAT, ""
@@ -347,14 +307,15 @@ public class JoinUtil {
           org.apache.hadoop.hive.serde.serdeConstants.LIST_COLUMNS, colNames
           .toString(),
           org.apache.hadoop.hive.serde.serdeConstants.LIST_COLUMN_TYPES,
-          colTypes.toString()));
+          colTypes.toString(),
+          serdeConstants.SERIALIZATION_LIB,LazyBinarySerDe.class.getName()));
       spillTableDesc[tag] = tblDesc;
     }
     return spillTableDesc;
   }
 
 
-  public static RowContainer getRowContainer(Configuration hconf,
+  public static RowContainer<List<Object>> getRowContainer(Configuration hconf,
       List<ObjectInspector> structFieldObjectInspectors,
       Byte alias,int containerSize, TableDesc[] spillTableDesc,
       JoinDesc conf,boolean noFilter, Reporter reporter) throws HiveException {
@@ -366,7 +327,7 @@ public class JoinUtil {
       containerSize = -1;
     }
 
-    RowContainer rc = new RowContainer(containerSize, hconf, reporter);
+    RowContainer<List<Object>> rc = new RowContainer<List<Object>>(containerSize, hconf, reporter);
     StructObjectInspector rcOI = null;
     if (tblDesc != null) {
       // arbitrary column names used internally for serializing to spill table

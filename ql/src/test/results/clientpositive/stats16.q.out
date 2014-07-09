@@ -4,17 +4,21 @@ POSTHOOK: query: drop table stats16
 POSTHOOK: type: DROPTABLE
 PREHOOK: query: create table stats16 (key int, value string)
 PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
 POSTHOOK: query: create table stats16 (key int, value string)
 POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
 POSTHOOK: Output: default@stats16
 PREHOOK: query: desc formatted stats16
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@stats16
 POSTHOOK: query: desc formatted stats16
 POSTHOOK: type: DESCTABLE
+POSTHOOK: Input: default@stats16
 # col_name            	data_type           	comment             
 	 	 
-key                 	int                 	None                
-value               	string              	None                
+key                 	int                 	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -54,18 +58,16 @@ POSTHOOK: query: analyze table stats16 compute statistics
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@stats16
 POSTHOOK: Output: default@stats16
-POSTHOOK: Lineage: stats16.key EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: stats16.value SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
 PREHOOK: query: desc formatted stats16
 PREHOOK: type: DESCTABLE
+PREHOOK: Input: default@stats16
 POSTHOOK: query: desc formatted stats16
 POSTHOOK: type: DESCTABLE
-POSTHOOK: Lineage: stats16.key EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: stats16.value SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
+POSTHOOK: Input: default@stats16
 # col_name            	data_type           	comment             
 	 	 
-key                 	int                 	None                
-value               	string              	None                
+key                 	int                 	                    
+value               	string              	                    
 	 	 
 # Detailed Table Information	 	 
 Database:           	default             	 
@@ -75,8 +77,8 @@ Retention:          	0
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
 Table Parameters:	 	 
+	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numPartitions       	0                   
 	numRows             	500                 
 	rawDataSize         	5312                
 	totalSize           	5812                
@@ -100,5 +102,3 @@ POSTHOOK: query: drop table stats16
 POSTHOOK: type: DROPTABLE
 POSTHOOK: Input: default@stats16
 POSTHOOK: Output: default@stats16
-POSTHOOK: Lineage: stats16.key EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: stats16.value SIMPLE [(src)src.FieldSchema(name:value, type:string, comment:default), ]
